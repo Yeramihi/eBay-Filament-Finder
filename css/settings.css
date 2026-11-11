@@ -31,3 +31,14 @@ input[type="checkbox"] { width:20px; min-height:20px; height:20px; margin:4px 0;
 .storage-row { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;flex-wrap:wrap; }
 #storage-size { display:block;font-size:18px;font-weight:650;color:#17365d; }
 #storage-status.error { color:#9b4218; }
+
+.setting-label { display:flex;align-items:center;gap:6px;min-width:0; }
+.settings-info { flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;min-height:24px;padding:0;border:0;background:transparent;color:#355779;font:18px/1 system-ui;cursor:help; }
+.settings-info:hover { background:#eef2f7;border-radius:50%; }
+.settings-tooltip { position:fixed;inset:auto;margin:0;width:330px;max-width:calc(100vw - 16px);max-height:min(400px, calc(100dvh - 16px));overflow:auto;overscroll-behavior:contain;padding:12px 14px;border:1px solid #acbdd0;border-radius:8px;background:#fff;color:#18283b;box-shadow:0 5px 22px #17365d40;font:12px/1.5 system-ui;text-align:left;white-space:normal; }
+.settings-tooltip strong { display:block;color:#17365d;font-size:13px; }
+.settings-tooltip p { margin:8px 0 0; }
+.settings-tooltip ul { margin:8px 0;padding-left:18px; }
+.settings-tooltip li { margin:6px 0; }
+.settings-tooltip kbd { padding:1px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#f4f7fb; }
+.settings-tooltip [hidden], #storage-status:empty { display:none!important; }

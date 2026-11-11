@@ -15,6 +15,52 @@ globalThis.EbaySettings = (() => {
   };
 
   function bind(root, viewport, close) {
+    let activeHelp, pinnedHelp=false, helpTimer;
+    function hideHelp() {
+      clearTimeout(helpTimer);
+      if(!activeHelp) return;
+      activeHelp.popup.hidePopover();
+      activeHelp.button.setAttribute('aria-expanded','false');
+      activeHelp=undefined;pinnedHelp=false;
+    }
+    function showHelp(button,pin=false) {
+      clearTimeout(helpTimer);
+      if(activeHelp?.button===button) {pinnedHelp=pinnedHelp||pin;return;}
+      hideHelp();
+      const popup=root.getElementById(button.dataset.help);
+      activeHelp={button,popup};pinnedHelp=pin;
+      popup.showPopover();button.setAttribute('aria-expanded','true');
+      const anchor=button.getBoundingClientRect(), bounds=popup.getBoundingClientRect();
+      popup.style.left=`${Math.max(8,Math.min(anchor.left,innerWidth-bounds.width-8))}px`;
+      const top=anchor.bottom+6+bounds.height<=innerHeight-8 ? anchor.bottom+6 : anchor.top-bounds.height-6;
+      popup.style.top=`${Math.max(8,Math.min(top,innerHeight-bounds.height-8))}px`;
+    }
+    const leaveHelp=()=>{if(!pinnedHelp) helpTimer=setTimeout(hideHelp,180);};
+    for(const button of root.querySelectorAll('.settings-info')) {
+      const popup=root.getElementById(button.dataset.help);
+      button.addEventListener('pointerenter',()=>showHelp(button));
+      button.addEventListener('pointerleave',leaveHelp);
+      button.addEventListener('focus',()=>showHelp(button));
+      button.addEventListener('blur',leaveHelp);
+      button.addEventListener('click',()=>{
+        if(activeHelp?.button===button&&pinnedHelp) hideHelp();
+        else showHelp(button,true);
+      });
+      popup.addEventListener('pointerenter',()=>clearTimeout(helpTimer));
+      popup.addEventListener('pointerleave',leaveHelp);
+    }
+    function dismissHelp(event) {
+      if(activeHelp&&!event.composedPath().includes(activeHelp.button)&&!event.composedPath().includes(activeHelp.popup)) hideHelp();
+    }
+    function escapeHelp(event) {
+      if(event.key==='Escape'&&activeHelp) {event.preventDefault();event.stopImmediatePropagation();hideHelp();}
+    }
+    function scrollHelp(event) {if(activeHelp&&!activeHelp.popup.contains(event.target)) hideHelp();}
+    root.addEventListener('pointerdown',dismissHelp,true);
+    root.addEventListener('focusin',dismissHelp,true);
+    root.addEventListener('keydown',escapeHelp,true);
+    root.addEventListener('scroll',scrollHelp,true);
+    window.addEventListener('resize',hideHelp);
     const side = root.getElementById('side');
     const width = root.getElementById('width');
     const display = root.getElementById('display');
@@ -202,7 +248,15 @@ globalThis.EbaySettings = (() => {
       showStatus('Changes save automatically.');
     }).catch(() => showStatus('Could not load settings. Reopen this window to retry.', true));
 
-    return () => {disposed=true;clearTimeout(storageTimer);chrome.storage.onChanged.removeListener(onChange);};
+    return () => {
+      disposed=true;clearTimeout(storageTimer);hideHelp();
+      root.removeEventListener('pointerdown',dismissHelp,true);
+      root.removeEventListener('focusin',dismissHelp,true);
+      root.removeEventListener('keydown',escapeHelp,true);
+      root.removeEventListener('scroll',scrollHelp,true);
+      window.removeEventListener('resize',hideHelp);
+      chrome.storage.onChanged.removeListener(onChange);
+    };
   }
 
   let activeDialog;

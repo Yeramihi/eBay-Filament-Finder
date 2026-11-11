@@ -28,41 +28,35 @@
         <select id="display"><option value="tiles">Tiles</option><option value="lines">Single lines</option></select>
       </div>
       <div class="row">
-        <label for="resize-ebay">Resize eBay</label>
+        <div class="setting-label"><label for="resize-ebay">Resize eBay</label><button type="button" class="settings-info" data-help="resize-help" aria-label="About Resize eBay" aria-controls="resize-help" aria-describedby="resize-help" aria-expanded="false">ⓘ</button><div id="resize-help" class="settings-tooltip" role="tooltip" popover="manual"><strong>Resize eBay</strong><p>When checked, the finder sits <b>beside the page</b>. Otherwise it overlays the content.</p><p>The collapsed bar always has its own space.</p></div></div>
         <input id="resize-ebay" type="checkbox" aria-describedby="resize-help">
       </div>
-      <p class="hint" id="resize-help">Place the finder beside the page when checked. Otherwise it overlays the page. The collapsed bar always has its own space.</p>
     </fieldset>
     <fieldset id="scanning" disabled>
       <legend>Scanning</legend>
       <div class="row">
-        <label for="scan-mode">Scanning mode</label>
+        <div class="setting-label"><label for="scan-mode">Scanning mode</label><button type="button" class="settings-info" data-help="scan-mode-help" aria-label="About scanning modes" aria-controls="scan-mode-help" aria-describedby="scan-mode-help" aria-expanded="false">ⓘ</button><div id="scan-mode-help" class="settings-tooltip" role="tooltip" popover="manual"><strong>Scanning modes</strong><ul><li><b>Background:</b> checks listings without opening tabs.</li><li><b>Visible tabs:</b> opens one tab and reuses it, checking one listing at a time.</li><li><b>Mixed:</b> starts with your parallel count. On an error, new requests pause while active requests finish. Failed listings are checked one at a time in the visible tab, then parallel background scanning resumes.</li></ul><p>Press <kbd>Escape</kbd> to stop. Changes apply when you next click <b>Scan</b>.</p></div></div>
         <select id="scan-mode" aria-describedby="scan-mode-help">
           <option value="background">Background</option>
           <option value="visible">Visible tabs</option>
           <option value="mixed">Mixed</option>
         </select>
       </div>
-      <p class="hint" id="scan-mode-help">Background checks listings without opening tabs. Visible tabs opens one scan tab and reuses it for every listing. Mixed starts with your chosen parallel count. On an error it pauses new background requests, lets active requests finish, and checks failed listings one at a time in the visible tab. It then resumes parallel background scanning. Visible tabs always checks one listing at a time. Press Escape to stop. Applies when you next click Scan.</p>
       <div class="row">
-        <label for="cache-age">Maximum saved listing age</label>
+        <div class="setting-label"><label for="cache-age">Maximum saved listing age</label><button type="button" class="settings-info" data-help="cache-age-help" aria-label="About saved listing age" aria-controls="cache-age-help" aria-describedby="cache-age-help" aria-expanded="false">ⓘ</button><div id="cache-age-help" class="settings-tooltip" role="tooltip" popover="manual"><strong>Saved listing age</strong><p><b>Default: 1 week.</b> Saved listings survive browser restarts.</p><p>Age starts at <b>retrieval</b>, not reuse. One month means <b>30 days</b>.</p><p>Opening a listing refreshes its saved data.</p></div></div>
         <select id="cache-age"><option value="day">1 day</option><option value="week">1 week</option><option value="month">1 month</option><option value="never">Never dropped</option></select>
       </div>
-      <p class="hint">Default: 1 week. Saved listings survive browser restarts. Age is measured from retrieval, not reuse; 1 month means 30 days. Opening a listing refreshes its saved data.</p>
       <div class="row">
-        <label for="parallel">Listings in parallel</label>
+        <div class="setting-label"><label for="parallel">Listings in parallel</label><button type="button" class="settings-info" data-help="scan-help" aria-label="About parallel listings" aria-controls="scan-help" aria-describedby="scan-help" aria-expanded="false">ⓘ</button><div id="scan-help" class="settings-tooltip" role="tooltip" popover="manual"><strong>Listings in parallel</strong><p><b>Background</b> and <b>Mixed</b> share your saved count (default <b>5</b>).</p><p><b>Visible tabs</b> shows 1. Switching back restores your saved value.</p><p>Changes apply to the next scan.</p><p class="warning" id="warning" hidden><b>High parallel count:</b> more than 20 can trigger eBay request limits or verification checks.</p></div></div>
         <input id="parallel" type="number" min="1" max="999" step="1" required aria-describedby="scan-help">
       </div>
-      <p class="hint" id="scan-help">Background and Mixed share your saved parallel count (default 5). Visible tabs shows 1; switching back restores your saved value. Changes apply to the next scan.</p>
-      <p class="warning" id="warning" hidden>More than 20 can trigger eBay request limits or verification checks.</p>
     </fieldset>
     <fieldset id="storage">
       <legend>Storage</legend>
       <div class="storage-row">
-        <div><span>Local storage used</span><output id="storage-size" aria-live="polite">Calculating…</output></div>
+        <div><div class="setting-label"><span>Local storage used</span><button type="button" class="settings-info" data-help="storage-help" aria-label="About storage and purging" aria-controls="storage-help" aria-describedby="storage-help" aria-expanded="false">ⓘ</button><div id="storage-help" class="settings-tooltip" role="tooltip" popover="manual"><strong>Local storage usage</strong><p>Includes <b>saved listings, search snapshots and settings</b>. The size updates as storage changes.</p><p><b>Purge all cache</b> removes cached listing data and scan snapshots. Your preferences and hidden-list choices are kept.</p><p>Scans and opened listings can save fresh data afterwards.</p></div></div><output id="storage-size" aria-live="polite">Calculating…</output></div>
         <button id="purge-cache" type="button">Purge all cache</button>
       </div>
-      <p class="hint">Includes saved listings, search snapshots and settings. Purging removes cached listing data and scan snapshots, keeping preferences and hidden-list choices. Scans and opened listings can save fresh data afterwards.</p>
       <p id="storage-status" class="hint" role="status"></p>
     </fieldset>
     <p id="status" role="status">Loading settings…</p>
