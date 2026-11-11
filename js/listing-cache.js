@@ -51,9 +51,9 @@ globalThis.EbayListingCache = (() => {
     if(expired.length) await chrome.storage.local.remove(expired);
     return items;
   }
-  async function write(value, rows) {
+  async function write(value, rows, pageOpenedAt=Date.now()) {
     const url=canonical(value);
-    const entry={version:1,fetchedAt:Date.now(),rows:rows.map(({cached,fetchedAt,...row})=>row)};
+    const entry={version:1,fetchedAt:Date.now(),pageOpenedAt,rows:rows.map(({cached,fetchedAt,...row})=>row)};
     // Storage failures must not discard successfully retrieved live results.
     try {
       await chrome.storage.local.set({[prefix+url]:entry});
@@ -69,10 +69,14 @@ globalThis.EbayListingCache = (() => {
       individual:EbayVariants.totalEstimate(row).amount,bulk:EbayVariants.spoolEstimate(row).amount};
   }
   const differentPrice=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.round(a*100)!==Math.round(b*100);
-  async function refresh(value,rows) {
+  async function refresh(value,rows,baseline,pageOpenedAt) {
     const url=canonical(value), key=prefix+url;
     const previous=(await chrome.storage.local.get(key))[key];
-    const oldRows=new Map((previous?.rows || []).map(row=>[priceKey(row),row]));
+    if(Number.isFinite(previous?.pageOpenedAt)&&previous.pageOpenedAt>pageOpenedAt) {
+      return {...result(previous,true),persisted:true,fetchedAt:previous.fetchedAt,superseded:true,priceChanges:[]};
+    }
+    const comparison=baseline&&Array.isArray(baseline.rows) ? baseline : previous;
+    const oldRows=new Map((comparison?.rows || []).map(row=>[priceKey(row),row]));
     const priceChanges=[];
     for(const row of rows) {
       const id=priceKey(row), old=id && oldRows.get(id);
@@ -80,12 +84,12 @@ globalThis.EbayListingCache = (() => {
       const before=priceSnapshot(old), after=priceSnapshot(row);
       if((before.currency&&after.currency&&before.currency!==after.currency) ||
           ['item','postage','individual','bulk'].some(field=>differentPrice(before[field],after[field]))) {
-        priceChanges.push({id,label:row.label,before,after,previousFetchedAt:previous.fetchedAt});
+        priceChanges.push({id,label:row.label,before,after,previousFetchedAt:comparison.fetchedAt});
       }
     }
     // Comparison and replacement share the cache queue so a concurrent scan
     // cannot change the baseline between these two operations.
-    return {...await write(url,rows),priceChanges};
+    return {...await write(url,rows,pageOpenedAt),priceChanges};
   }
   async function removeExpired() {
     const saved=await chrome.storage.local.get(null);
@@ -102,7 +106,7 @@ globalThis.EbayListingCache = (() => {
   const getMany=values=>serial(()=>readMany(values));
   const getAll=origin=>serial(()=>readAll(origin));
   const put=(value,rows)=>serial(()=>write(value,rows));
-  const refreshFromPage=(value,rows)=>serial(()=>refresh(value,rows));
+  const refreshFromPage=(value,rows,baseline,pageOpenedAt)=>serial(()=>refresh(value,rows,baseline,pageOpenedAt));
   const remove=value=>serial(()=>chrome.storage.local.remove(prefix+canonical(value)));
   const purge=()=>serial(async()=>{
     const local=await chrome.storage.local.get(null);

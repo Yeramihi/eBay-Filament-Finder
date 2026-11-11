@@ -51,8 +51,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       }
       // An explicitly opened listing is fresh even if eBay omits stock for a
       // variant. Preserve that unknown status rather than retaining old data.
-      const result=await EbayListingCache.refreshFromPage(url,message.rows);
-      return result.persisted ? {saved:true,fetchedAt:result.fetchedAt,priceChanges:result.priceChanges} : {saved:false,error:result.cacheError,priceChanges:result.priceChanges};
+      const result=await EbayListingCache.refreshFromPage(url,message.rows,message.baseline,Number.isFinite(message.pageOpenedAt) ? message.pageOpenedAt : Date.now());
+      return result.persisted ? {saved:true,fetchedAt:result.fetchedAt,priceChanges:result.priceChanges,superseded:result.superseded===true} : {saved:false,error:result.cacheError,priceChanges:result.priceChanges};
     })().then(respond,error=>respond({saved:false,error:error.message}));
     return true;
   }

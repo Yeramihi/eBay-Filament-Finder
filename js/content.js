@@ -6,6 +6,15 @@
   try { if ((await chrome.runtime.sendMessage({type:'visible-scan-context'}))?.scan) return; }
   catch { /* Normal browsing remains available if the worker is unavailable. */ }
   const listingUrl = location.href;
+  const pageOpenedAt=Number.isFinite(performance.timeOrigin) ? performance.timeOrigin : Date.now();
+  let comparisonBaseline;
+  try {
+    const id=location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
+    const response=id&&await chrome.runtime.sendMessage({type:'finder-cache-read',urls:[location.origin+'/itm/'+id]});
+    if(response?.error) throw new Error(response.error);
+    const cached=response?.items?.[0];
+    comparisonBaseline={rows:cached?.rows || [],fetchedAt:cached?.rows?.[0]?.fetchedAt};
+  } catch { /* The worker can still compare against the current cache. */ }
   const PANEL_ID = "ebay-variant-prices";
   if (document.getElementById(PANEL_ID)) return;
 
@@ -141,7 +150,7 @@
     `;
 
     const priceStatus=root.querySelector('.price-change-status');
-    updatePriceNotice=message=>{priceStatus.textContent=message;priceStatus.hidden=!message;};
+    updatePriceNotice=(message,tone='mixed')=>{priceStatus.textContent=message;priceStatus.hidden=!message;priceStatus.style.color=priceTones[tone].text;};
     const cacheStatus=root.querySelector('.cache-status');
     const cacheRetry=root.querySelector('.cache-retry');
     updateCacheNotice=(message,error=false)=>{
@@ -265,6 +274,21 @@
   let openedVariantId=new URL(listingUrl).searchParams.get('var');
   const reportedPriceChanges=new Map();
   let priceWarning, closedPriceWarning='';
+  const priceTones={down:{text:'#166534',border:'#15803d',background:'#f0fdf4'},up:{text:'#b91c1c',border:'#b4232c',background:'#fff1f0'},mixed:{text:'#111111',border:'#333333',background:'#f5f5f5'}};
+  function priceDirection(changes) {
+    let up=false,down=false,unknown=false;
+    for(const change of changes) {
+      if(change.before.currency!==change.after.currency) {unknown=true;continue;}
+      for(const field of ['item','postage','individual','bulk']) {
+        const before=change.before[field],after=change.after[field];
+        if(!Number.isFinite(before)||!Number.isFinite(after)) continue;
+        const difference=Math.round(after*100)-Math.round(before*100);
+        if(difference>0) up=true;
+        if(difference<0) down=true;
+      }
+    }
+    return unknown||up&&down ? 'mixed' : up ? 'up' : down ? 'down' : 'mixed';
+  }
   function money(value,currency) {
     if(!Number.isFinite(value)) return 'unknown';
     try{return EbayVariants.formatCurrency(value,currency);}catch{return `${value.toFixed(2)} ${currency || ''}`;}
@@ -289,18 +313,19 @@
     const openedKey=rows.some(row=>row.singleItem) ? 'single' : openedVariantId ? 'variant:'+openedVariantId : null;
     const change=openedKey&&reportedPriceChanges.get(openedKey);
     const others=[...reportedPriceChanges.values()].filter(item=>item.id!==openedKey);
-    updatePriceNotice(others.length ? `Price changes detected for ${others.length} ${openedKey ? 'other ' : ''}variant${others.length===1?'':'s'} since the saved scan. ${others.slice(0,3).map(item=>`${item.label}: ${priceChangeText(item)}`).join(' | ')}${others.length>3?' | More variants also changed.':''}` : '');
+    updatePriceNotice(others.length ? `${others.length} ${openedKey ? 'other ' : ''}variant${others.length===1?'':'s'} with changed prices.` : '',priceDirection([...reportedPriceChanges.values()]));
     if(!change) return;
+    const direction=priceDirection([change]),tone=priceTones[direction];
     const signature=JSON.stringify(change);
     if(signature===closedPriceWarning || priceWarning?.signature===signature) return;
     priceWarning?.host.remove();
     const host=document.createElement('div');host.id='ebay-finder-price-warning';
     host.style.cssText='all:initial!important;position:fixed!important;top:12px!important;left:56px!important;right:56px!important;z-index:2147483647!important;';
     const shadow=host.attachShadow({mode:'closed'});
-    const style=document.createElement('style');style.textContent='section{display:flex;align-items:start;gap:12px;max-width:920px;margin:auto;padding:14px 16px;border:2px solid #b4232c;border-radius:10px;background:#fff1f0;color:#8a1720;box-shadow:0 4px 18px #0003;font:14px/1.5 system-ui}strong{display:block}button{flex:none;margin-left:auto;padding:5px 10px;border:1px solid #b4232c;border-radius:5px;background:white;color:#8a1720;font:13px system-ui;cursor:pointer}';
+    const style=document.createElement('style');style.textContent=`section{display:flex;align-items:start;gap:12px;max-width:920px;margin:auto;padding:14px 16px;border:2px solid ${tone.border};border-radius:10px;background:${tone.background};color:${tone.text};box-shadow:0 4px 18px #0003;font:14px/1.5 system-ui}strong{display:block}button{flex:none;margin-left:auto;padding:5px 10px;border:1px solid ${tone.border};border-radius:5px;background:white;color:${tone.text};font:13px system-ui;cursor:pointer}`;
     const section=document.createElement('section');section.setAttribute('role','alert');
     const text=document.createElement('div'), heading=document.createElement('strong'), detail=document.createElement('span');
-    heading.textContent='Price changed since the saved scan';
+    heading.textContent=direction==='down' ? 'Price decreased since the saved scan' : direction==='up' ? 'Price increased since the saved scan' : 'Prices changed since the saved scan';
     detail.textContent=`${change.label}: ${priceChangeText(change)}. Review the current listing before purchasing.`;
     text.append(heading,detail);
     const close=document.createElement('button');close.type='button';close.textContent='Close';close.setAttribute('aria-label','Dismiss price change warning');
@@ -318,28 +343,27 @@
       updateCacheNotice('Updating saved listing data…');
       // Let eBay finish populating its embedded variant data before replacing
       // the full saved listing. Later data changes get their own save.
-      cacheSaveTimer=setTimeout(saveCacheCandidate,750);
+      cacheSaveTimer=setTimeout(saveCacheCandidate,1500);
     }
   }
   async function saveCacheCandidate() {
     if(cacheSaving || !cacheCandidate || cacheCandidate.signature===savedSignature) return;
+    if(document.readyState!=='complete') {cacheSaveTimer=setTimeout(saveCacheCandidate,500);return;}
     cacheSaving=true;
     const candidate=cacheCandidate;
     candidate.attempts++;
     let saved=false;
     try {
-      const response=await chrome.runtime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows});
-      for(const change of response?.priceChanges || []) {
-        const previous=reportedPriceChanges.get(change.id);
-        const combined=previous ? {...change,before:previous.before,previousFetchedAt:previous.previousFetchedAt} : change;
-        if(priceChangeText(combined)) reportedPriceChanges.set(change.id,combined);
-        else reportedPriceChanges.delete(change.id);
-      }
+      const response=await chrome.runtime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows,baseline:comparisonBaseline,pageOpenedAt});
+      // Always compare with the cache captured when this document opened, not
+      // with an intermediate write caused by eBay's own page hydration.
+      reportedPriceChanges.clear();
+      for(const change of response?.priceChanges || []) if(priceChangeText(change)) reportedPriceChanges.set(change.id,change);
       updatePriceWarnings(candidate.rows);
       if(response?.saved!==true || !Number.isFinite(response.fetchedAt)) throw new Error(response?.error || 'The extension did not confirm the cache update. Reload this listing if the extension was updated.');
       savedSignature=candidate.signature;
       saved=true;
-      updateCacheNotice(`Saved to cache: ${new Date(response.fetchedAt).toLocaleString()}`);
+      updateCacheNotice(response.superseded ? `Cache already updated by a newer listing tab: ${new Date(response.fetchedAt).toLocaleString()}` : `Saved to cache: ${new Date(response.fetchedAt).toLocaleString()}`);
     } catch(error) {
       updateCacheNotice(`Could not update saved listing data: ${error.message}`,true);
     } finally {
