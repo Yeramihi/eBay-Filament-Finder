@@ -72,6 +72,7 @@ globalThis.EbaySettings = (() => {
     const allCached=root.getElementById('all-cached');
     const storageSize=root.getElementById('storage-size');
     const purgeCache=root.getElementById('purge-cache');
+    const clearMissing=root.getElementById('clear-missing');
     const storageStatus=root.getElementById('storage-status');
     let storageTimer, disposed=false, storageReading=false, storageAgain=false;
     async function updateStorageSize() {
@@ -105,6 +106,16 @@ globalThis.EbaySettings = (() => {
         storageStatus.textContent='Cache purged. Preferences and hidden-list choices kept.';
       } catch(error) {storageStatus.textContent=error.message;storageStatus.classList.add('error');}
       finally {purgeCache.disabled=false;await updateStorageSize();}
+    });
+    clearMissing.addEventListener('click',async()=>{
+      clearMissing.disabled=true;
+      storageStatus.classList.remove('error');storageStatus.textContent='Clearing remembered missing listings…';
+      try {
+        const response=await chrome.runtime.sendMessage({type:'finder-missing-clear'});
+        if(!response?.cleared) throw new Error(response?.error || 'Could not clear missing listings. Try again.');
+        storageStatus.textContent=`Cleared ${response.count} remembered missing listings. Future scans can try those IDs again.`;
+      } catch(error) {storageStatus.textContent=error.message;storageStatus.classList.add('error');}
+      finally {clearMissing.disabled=false;await updateStorageSize();}
     });
     updateStorageSize();
     const reset = root.getElementById('reset');

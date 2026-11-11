@@ -104,9 +104,10 @@
   let appliedQuery = '', appliedListingQuery = '', appliedCombine = 'and';
   let sortTouched = false;
   let userPaused = false, scanMode = 'background', visibleJob;
+  let cacheLoading=0;
   let scanStarted = false, scanParallel = EbaySettings.defaultParallel;
   let showAllCache=false, scopeRefreshPending=false;
-  const pageListings=new Set();
+  const pageListings=new Set(), rememberedMissing=new Set();
   const cachePreferencesReady=chrome.storage.local.get('finder:cache:showAll').then(saved=>{showAllCache=saved['finder:cache:showAll']===true;});
   const hiddenKey='finder:hiddenListings';
   let hiddenListings={}, hiddenTimer;
@@ -138,7 +139,20 @@
     return globalThis.EbaySearchListings();
   }
 
-  const rowElements = new WeakMap();
+  const resultsViewport=root.querySelector('.finder-results');
+  const virtualView=EbaySearchView.create(resultsViewport,
+    row=>EbayCards.entry(row,price,{search:true,clearCache:()=>clearListing(row),refresh:()=>refreshListing(row),hideListing:days=>toggleHidden(row,days)}),
+    (entry,row,context,firstListing)=>{
+      const actions=entry.querySelector('.listing-cache-actions');
+      if(actions) {
+        actions.hidden=!firstListing;
+        for(const button of actions.querySelectorAll('button')) button.disabled=button.dataset.action==='visibility' ? hiddenPending.has(row.url) : running||listingActions.size>0;
+        const duration=actions.querySelector('.hide-duration');if(duration) duration.disabled=hiddenPending.has(row.url);
+      }
+      EbayCards.updateHidden(entry,hiddenUntil(row.url));
+      EbayCards.updateAverage(entry,row.hiddenPreview||row.outOfStock ? null : context.averages.get(row.url),price,context.sortKey);
+      for(const field of entry.querySelectorAll('[data-sort-field]')) field.classList.toggle('sort-active',field.dataset.sortField===context.sortKey||field.dataset.sortAlias===context.sortKey);
+    });
   let renderGeneration = 0;
   let cacheRevision=0, cacheSyncTimer, cacheSyncBusy=false, cacheSyncAgain=false;
   async function render() {
@@ -156,22 +170,32 @@
     // when a different search does not include this listing. Never retain old
     // prices just to display the hidden-list management entry.
     const hiddenPreviews=Object.entries(hiddenListings).filter(([url])=>hiddenUntil(url) && url.startsWith(location.origin+'/itm/') && !present.has(url)).map(([url,record])=>({url,title:record.title || 'Hidden listing',hiddenPreview:true}));
-    const visible = [...results,...hiddenPreviews].filter(row => {
+    let visible=[];
+    let sliceStart=performance.now();
+    for(const row of [...results,...hiddenPreviews]) {
+      if(performance.now()-sliceStart>4) {await EbaySearchView.yieldTurn();if(generation!==renderGeneration)return;sliceStart=performance.now();}
+      const matches=(()=>{
       // Hidden listings stay available for management even after filters change.
       if(hiddenUntil(row.url)) return true;
       const checks = [];
       if (words.length) checks.push(EbayVariants.matches(row.label, words));
       if (listingWords.length) checks.push(EbayVariants.matches(row.title || '', listingWords));
       return !checks.length || (appliedCombine === 'or' ? checks.some(Boolean) : checks.every(Boolean));
-    });
+      })();
+      if(matches) {if(row.inStock) EbayVariants.spoolEstimate(row);visible.push(row);}
+    }
     const groups = new Map();
     for (const row of visible) {
       const key = row.url;
       if (!groups.has(key)) groups.set(key,[]);
       groups.get(key).push(row);
     }
-    const averages = new Map([...groups].map(([key,rows]) => [key,EbayVariants.matchingAverage(rows)]));
-    visible.sort((a,b) => {
+    const averages=new Map();
+    for(const [key,rows] of groups) {
+      averages.set(key,EbayVariants.matchingAverage(rows));
+      if(performance.now()-sliceStart>4) {await EbaySearchView.yieldTurn();if(generation!==renderGeneration)return;sliceStart=performance.now();}
+    }
+    visible=await EbaySearchView.sort(visible,(a,b) => {
       if (sortKey === 'average') {
         // Compare only the primary price before applying the secondary price;
         // title/variant tie-breakers belong after both numeric comparisons.
@@ -190,44 +214,31 @@
       if (['amount','postage','total'].includes(sortKey)) return EbayVariants.comparePrice(a,b,sortKey,ascending);
       const order = collator.compare(a[sortKey],b[sortKey]);
       return (ascending ? order : -order) || collator.compare(a.title || '',b.title || '') || collator.compare(a.label || '',b.label || '');
-    });
-    const entries = [];
-    const outOfStock = [];
-    const hiddenEntries=[];
-    const averageUpdates = [];
-    const actionRows=new Map();
-    for(const row of visible) if(!actionRows.has(row.url) || (actionRows.get(row.url).outOfStock&&!row.outOfStock)) actionRows.set(row.url,row);
-    let batchStarted = performance.now();
-    for (const row of visible) {
-      if(performance.now()-batchStarted>8){await new Promise(resolve=>setTimeout(resolve,0));if(generation!==renderGeneration)return;batchStarted=performance.now();}
-      const until=hiddenUntil(row.url);
-      if(until && actionRows.get(row.url)!==row) continue;
-      let entry=rowElements.get(row);
-      if(!entry){entry=EbayCards.entry(row,price,{search:true,clearCache:()=>clearListing(row),refresh:()=>refreshListing(row),hideListing:days=>toggleHidden(row,days)});rowElements.set(row,entry);}
-      const actions=entry.querySelector('.listing-cache-actions');
-      if(actions) {
-        actions.hidden=actionRows.get(row.url)!==row;
-        for(const button of actions.querySelectorAll('button')) button.disabled=button.dataset.action==='visibility' ? hiddenPending.has(row.url) : running || listingActions.size>0;
-        const duration=actions.querySelector('.hide-duration');
-        if(duration) duration.disabled=hiddenPending.has(row.url);
-      }
-      EbayCards.updateHidden(entry,until);
-      averageUpdates.push([entry,row.hiddenPreview || row.outOfStock ? null : averages.get(row.url)]);
-      (until ? hiddenEntries : row.outOfStock ? outOfStock : entries).push(entry);
+    },()=>generation===renderGeneration);
+    if(!visible || generation!==renderGeneration) return;
+    const entries=[],outOfStock=[],hiddenRows=new Map();
+    for(const row of visible) {
+      if(hiddenUntil(row.url)) {
+        if(!hiddenRows.has(row.url)||(hiddenRows.get(row.url).outOfStock&&!row.outOfStock)) hiddenRows.set(row.url,row);
+      } else (row.outOfStock ? outOfStock : entries).push(row);
+      if(performance.now()-sliceStart>4) {await EbaySearchView.yieldTurn();if(generation!==renderGeneration)return;sliceStart=performance.now();}
     }
-    const showResults = running || results.length > 0 || hiddenEntries.length>0;
-    if(!entries.length && showResults) entries.push(EbayCards.emptyState({scanning:running,outOfStock:outOfStock.length>0}));
-    if(generation!==renderGeneration)return;
-    updateCompactWidth();
-    resultsSection.hidden = !showResults;
-    // Commit average fields and their sort styling together, after all yielding work.
-    for (const [entry,average] of averageUpdates) EbayCards.updateAverage(entry,average,price,sortKey);
-    EbayCards.showEntries(root, entries, outOfStock, hiddenEntries);
+    const hiddenEntries=[...hiddenRows.values()],showResults=running||results.length>0||hiddenEntries.length>0;
+    updateCompactWidth();resultsSection.hidden=!showResults;
+    const hiddenSection=root.querySelector('.finder-hidden'),stockSection=root.querySelector('.finder-out-of-stock');
+    hiddenSection.hidden=!hiddenEntries.length;hiddenSection.querySelector('summary').textContent=`Hidden (${hiddenEntries.length} listings)`;
+    stockSection.hidden=!outOfStock.length;stockSection.querySelector('summary').textContent=`Out of stock variants (${outOfStock.length})`;
+    const context={averages,sortKey};
+    virtualView.set(resultsSection.querySelector('.finder-entries'),entries,context,!entries.length&&showResults ? EbayCards.emptyState({scanning:running,outOfStock:outOfStock.length>0}) : null);
+    virtualView.set(hiddenSection.querySelector('.finder-entries'),hiddenEntries,context);
+    virtualView.set(stockSection.querySelector('.finder-entries'),outOfStock,context);
+    root.querySelector('.finder-sort-menu').hidden=!entries.length&&!outOfStock.length&&!hiddenEntries.length;
     syncSort(sortKey,ascending);
     persist();
     const failureCount = failures.length ? ` · ${failures.length} couldn't be checked` : '';
     let message = '';
-    if (running) message = `Scanning ${checked}/${total} listings…`;
+    if(cacheLoading&&!running) message='Loading cached listings…';
+    else if (running) message = `Scanning ${checked}/${total} listings…`;
     else if(total && !scanStarted) message=`${results.length} cached variants from ${new Set(results.map(row=>row.url)).size} listings.`;
     else if (total) {
       const outcome = stopped && checked < total ? 'Scan stopped.' : 'Scan completed.';
@@ -269,7 +280,7 @@
     checked = trustedScan ? saved.checked || 0 : 0; total = trustedScan ? saved.total || 0 : 0;
     if(!trustedScan) EbayDock.save({results:[],failures:[]});
     for(const url of saved.pageListingUrls || []) pageListings.add(url);
-    if(!saved.allCacheView) for(const row of results) pageListings.add(row.url);
+    if(!saved.allCacheView) for(const row of [...results,...(saved.restoreListings || [])]) pageListings.add(row.url);
     if(!showAllCache && saved.allCacheView) {
       results=results.filter(row=>pageListings.has(row.url));
       checked=total=new Set([...results,...failures].map(row=>row.url)).size;
@@ -283,13 +294,22 @@
     restored = true;
     // Search snapshots cannot cover a new query or a newly opened results page.
     // Match its current organic results against the shared listing cache too.
-    try {await loadCached(await listings(),showAllCache);} catch(error) {console.error(error);}
+    try {
+      const current=await listings();for(const listing of current) pageListings.add(listing.url);
+      const restoredListings=(saved.restoreListings || []).filter(listing=>showAllCache||pageListings.has(listing.url));
+      await loadCached([...restoredListings,...current],showAllCache,false);
+    } catch(error) {console.error(error);scanNotice.textContent='Could not load cached results. Reopen this page to retry.';scanNotice.hidden=false;}
     showFailures(); render();
   });
   // An explicitly opened listing replaces its entire saved variant set.
   // Expired data is also removed from the current results and deduplication set.
   chrome.storage.onChanged.addListener((changes,area)=>{
     if(area!=='local') return;
+    for(const [key,change] of Object.entries(changes)) if(key.startsWith('finder:cache:missing:')) {
+      const url=key.slice('finder:cache:missing:'.length);
+      if(change.newValue) rememberedMissing.add(url);
+      else if(rememberedMissing.delete(url) && !results.some(row=>row.url===url) && !queue.some(listing=>listing.url===url)) seen.delete(url);
+    }
     if(changes['finder:cache:showAll']) {
       showAllCache=changes['finder:cache:showAll'].newValue===true;
       cacheRevision++;scopeRefreshPending=true;
@@ -321,7 +341,7 @@
         if(!references.has(listing.url)) references.set(listing.url,listing);
       }
       const [response,saved]=await Promise.all([
-        chrome.runtime.sendMessage(showAllCache ? {type:'finder-cache-read-all'} : {type:'finder-cache-read',urls:[...references.keys()]}),
+        readCacheBatches([...references.keys()],showAllCache),
         chrome.storage.local.get(hiddenKey)
       ]);
       // A tab can become active while Scan is starting, or a cache write can
@@ -372,21 +392,49 @@
   window.addEventListener('focus',scheduleCacheSync);
   window.addEventListener('pageshow',event=>{if(event.persisted) scheduleCacheSync();});
   root.querySelector('.results').addEventListener('toggle',persist);
-  async function loadCached(candidates,all=false) {
-    for(const listing of candidates) pageListings.add(listing.url);
+  async function readCacheBatches(urls,all,onBatch) {
+    cacheLoading++;
+    if(!running) status.textContent='Loading cached listings…';
+    try {
+      let references=urls.map(url=>({url})),items=[];
+      if(all) {
+        const index=await chrome.runtime.sendMessage({type:'finder-cache-index'});
+        if(!Array.isArray(index?.items)) throw new Error(index?.error || 'Could not read cached listings.');
+        references=index.items;
+      }
+      for(let offset=0;offset<references.length;offset+=12) {
+        const batch=references.slice(offset,offset+12),metadata=new Map(batch.map(item=>[item.url,item]));
+        const response=await chrome.runtime.sendMessage({type:'finder-cache-read',urls:batch.map(item=>item.url)});
+        if(!Array.isArray(response?.items)) throw new Error(response?.error || 'Could not read cached listings.');
+        const chunk=response.items.map(item=>({...metadata.get(item.url),...item}));
+        if(onBatch) await onBatch(chunk);else items.push(...chunk);
+        if(!running) status.textContent=`Loading cached listings… ${Math.min(offset+batch.length,references.length)}/${references.length}`;
+        await EbaySearchView.yieldTurn();
+      }
+      return {items};
+    } finally {cacheLoading--;if(!cacheLoading) render();}
+  }
+  async function loadCached(candidates,all=false,trackPages=true) {
+    if(trackPages) for(const listing of candidates) pageListings.add(listing.url);
     const unknown=[...new Map(candidates.filter(listing=>!seen.has(listing.url)).map(listing=>[listing.url,listing])).values()];
     if(!all&&!unknown.length) return;
-    const response=await chrome.runtime.sendMessage(all ? {type:'finder-cache-read-all'} : {type:'finder-cache-read',urls:unknown.map(listing=>listing.url)});
-    if(!Array.isArray(response?.items)) throw new Error(response?.error || 'Could not read cached listings.');
     const byURL=new Map(candidates.map(listing=>[listing.url,listing]));
-    for(const item of response.items) {
-      if(!item.rows?.length || seen.has(item.url)) continue;
-      const listing=byURL.get(item.url) || {url:item.url,title:item.title,image:item.image};
-      seen.add(item.url);checked++;total++;
-      results.push(...item.rows.map(row=>({...listing,...row,url:item.url,title:row.title||listing.title,image:row.image||listing.image})));
-    }
+    let first=true;
+    await readCacheBatches(unknown.map(listing=>listing.url),all,async items=>{
+      let count=0;
+      for(const item of items) {
+        if(item.missing) {rememberedMissing.add(item.url);continue;}
+        if(!item.rows?.length || seen.has(item.url)) continue;
+        const listing=byURL.get(item.url) || {url:item.url,title:item.title,image:item.image};
+        seen.add(item.url);checked++;total++;
+        for(const row of item.rows) {
+          results.push({...listing,...row,url:item.url,title:row.title||listing.title,image:row.image||listing.image});
+          if(++count%150===0) await EbaySearchView.yieldTurn();
+        }
+      }
+      if(first&&results.length) {first=false;EbayCards.setFiltersExpanded(root,true);render();}
+    });
     EbayDock.save({results,allCacheView:showAllCache,pageListingUrls:[...pageListings]});
-    if(results.length) EbayCards.setFiltersExpanded(root,true);
     render();
   }
   async function configureScan() {
@@ -445,7 +493,7 @@
   }
   function enqueue(candidates) {
     for (const listing of candidates) {
-      if (seen.has(listing.url)) continue;
+      if (seen.has(listing.url)||rememberedMissing.has(listing.url)) continue;
       seen.add(listing.url);
       queue.push(listing);
       total++;
@@ -529,6 +577,7 @@
     }
     function accept(listing,response) {
       if(response?.removed) {
+        if(response.missing) rememberedMissing.add(listing.url);
         checked++;
         results=results.filter(row=>row.url!==listing.url);
         failures=failures.filter(row=>row.url!==listing.url);

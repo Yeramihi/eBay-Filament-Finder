@@ -40,6 +40,7 @@
         "js/settings.js",
         "js/cards.js",
         "js/search-bridge.js",
+        "js/search-view.js",
         "js/search.js"
       ],
       "run_at": "document_idle"

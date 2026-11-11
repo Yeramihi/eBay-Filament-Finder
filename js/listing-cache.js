@@ -20,9 +20,10 @@ globalThis.EbayListingCache = (() => {
   }
   async function readMany(values) {
     const urls=[...new Set(values.map(canonical))];
-    const saved=await chrome.storage.local.get([ageKey,...urls.map(url=>prefix+url)]);
+    const saved=await chrome.storage.local.get([ageKey,...urls.map(url=>prefix+url),...urls.map(url=>missingPrefix+url)]);
     const expired=[];
     const items=urls.map(url=>{
+      if(saved[missingPrefix+url]) return {url,removed:true,missing:true};
       const entry=saved[prefix+url];
       if(valid(entry,saved[ageKey])) return {url,...result(entry,true)};
       if(entry) expired.push(prefix+url);
@@ -33,9 +34,9 @@ globalThis.EbayListingCache = (() => {
   }
   async function read(value) {
     const [item]=await readMany([value]);
-    return item.rows ? {rows:item.rows} : null;
+    return item.missing ? {removed:true,missing:true} : item.rows ? {rows:item.rows} : null;
   }
-  async function readAll(origin) {
+  async function readAll(origin,indexOnly=false) {
     canonical(origin+'/itm/0');
     const saved=await chrome.storage.local.get(null), metadata=new Map(), expired=[];
     // Older cache entries relied on search snapshots for their title/image.
@@ -44,9 +45,11 @@ globalThis.EbayListingCache = (() => {
     }
     const items=[];
     for(const [key,entry] of Object.entries(saved)) {
-      if(!key.startsWith(prefix+origin+'/itm/')) continue;
+      if(key.startsWith(missingPrefix+origin+'/itm/')) {items.push({url:key.slice(missingPrefix.length),removed:true,missing:true});continue;}
+      if(!key.startsWith(prefix+origin+'/itm/') || saved[missingPrefix+key.slice(prefix.length)]) continue;
       if(!valid(entry,saved[ageKey])) {expired.push(key);continue;}
       const url=key.slice(prefix.length), listing=metadata.get(url) || {};
+      if(indexOnly) {items.push({url,...listing,title:entry.rows[0]?.title||listing.title,image:entry.rows[0]?.image||listing.image});continue;}
       items.push({url,...listing,rows:result(entry,true).rows.map(row=>({...listing,...row,url,title:row.title||listing.title,image:row.image||listing.image}))});
     }
     if(expired.length) await chrome.storage.local.remove(expired);
@@ -106,9 +109,17 @@ globalThis.EbayListingCache = (() => {
     pending=result.catch(()=>{});
     return result;
   }
+  const isMissing=value=>serial(async()=>!!(await chrome.storage.local.get(missingPrefix+canonical(value)))[missingPrefix+canonical(value)]);
+  const forgetMissing=()=>serial(async()=>{
+    const saved=await chrome.storage.local.get(null);
+    const keys=Object.keys(saved).filter(key=>key.startsWith(missingPrefix));
+    if(keys.length) await chrome.storage.local.remove(keys);
+    return {cleared:true,count:keys.length};
+  });
   const get=value=>serial(()=>read(value));
   const getMany=values=>serial(()=>readMany(values));
   const getAll=origin=>serial(()=>readAll(origin));
+  const getIndex=origin=>serial(()=>readAll(origin,true));
   const put=(value,rows)=>serial(()=>write(value,rows));
   const refreshFromPage=(value,rows,baseline,pageOpenedAt)=>serial(()=>refresh(value,rows,baseline,pageOpenedAt));
   const remove=value=>serial(()=>chrome.storage.local.remove(prefix+canonical(value)));
@@ -128,7 +139,7 @@ globalThis.EbayListingCache = (() => {
   });
   const purge=()=>serial(async()=>{
     const local=await chrome.storage.local.get(null);
-    const localKeys=Object.keys(local).filter(key=>key.startsWith(prefix)||key.startsWith(missingPrefix)||key.startsWith('finder:saved-page:'));
+    const localKeys=Object.keys(local).filter(key=>key.startsWith(prefix)||key.startsWith('finder:saved-page:'));
     if(localKeys.length) await chrome.storage.local.remove(localKeys);
     const session=await chrome.storage.session.get(null);
     const sessionKeys=Object.keys(session).filter(key=>key.startsWith('finder-page:'));
@@ -140,5 +151,5 @@ globalThis.EbayListingCache = (() => {
     if(area==='local'&&changes[ageKey]) prune().catch(console.error);
   });
   prune().catch(console.error);
-  return {get,getMany,getAll,put,refreshFromPage,remove,markMissing,purge,canonical};
+  return {get,getMany,getAll,getIndex,isMissing,forgetMissing,put,refreshFromPage,remove,markMissing,purge,canonical};
 })();

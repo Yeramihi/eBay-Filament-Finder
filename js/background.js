@@ -3,6 +3,10 @@ importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
 let hiddenChanges=Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'finder-missing-clear' && sender.id === chrome.runtime.id) {
+    EbayListingCache.forgetMissing().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
   if (message?.type === 'finder-listing-missing' && sender.id === chrome.runtime.id) {
     (async()=>EbayListingCache.markMissing(EbayListingCache.canonical(sender.url)))()
       .then(respond,error=>respond({error:error.message}));
@@ -28,6 +32,11 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     });
     hiddenChanges=task.catch(()=>{});
     task.then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-index' && sender.id === chrome.runtime.id) {
+    (async()=>({items:await EbayListingCache.getIndex(new URL(sender.url).origin)}))()
+      .then(respond,error=>respond({error:error.message}));
     return true;
   }
   if (message?.type === 'finder-cache-read-all' && sender.id === chrome.runtime.id) {
@@ -92,6 +101,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     const sourceTab = sender.tab?.id;
     if (!Number.isInteger(sourceTab)) throw new Error('Missing source tab.');
     const key = url.origin + url.pathname;
+    if(await EbayListingCache.isMissing(key)) return {removed:true,missing:true};
     const cached = message.forceRefresh === true ? null : await EbayListingCache.get(key);
     if (cached) return cached;
     if (message.visible === true) return EbayVisibleScanner.start(key,sender,message.progress,message.returnToSource === true);

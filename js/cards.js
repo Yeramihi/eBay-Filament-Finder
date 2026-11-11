@@ -41,6 +41,9 @@ globalThis.EbayCards = (() => {
     .listing-cache-actions button:disabled{opacity:.5;cursor:default}
     .finder-entries.lines .listing-content{display:inline}
     .finder-entries.lines .listing-cache-actions{display:inline-flex;margin:0 0 0 8px;vertical-align:middle}
+    .finder-entries.finder-virtual-list{display:block;overflow-anchor:none}
+    .finder-virtual-list>.finder-entry{margin:0 0 8px}
+    .finder-virtual-spacer{display:block;width:1px;pointer-events:none}
     .finder-entry::after{content:'';display:block;clear:both}.finder-entries.lines{gap:2px;padding:6px 8px}.finder-entries.lines .finder-entry{min-height:0;padding:3px 0;border:0;border-radius:0;background:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}.finder-entries.lines a.finder-entry{color:#174b83!important;text-decoration:underline!important;text-underline-offset:2px}.finder-entries.lines a.finder-entry:hover{background:transparent;color:#0f3158!important}.finder-entry .line-label{display:none}.finder-entries.lines .field{display:none}.finder-entries.lines .line-label{display:inline;font-weight:400}.finder-entries.lines img{display:none}.finder-entries.lines .finder-entry::after{display:none}
   `;
   function emptyState({scanning=false,outOfStock=false}={}) {
@@ -385,5 +388,5 @@ globalThis.EbayCards = (() => {
     root.querySelector('.finder-toggle').setAttribute('aria-expanded', String(expanded));
   }
 
-  return {emptyState, controls, entry, updateHidden, showEntries, setFiltersExpanded, tooltip, updateAverage};
+  return {closeTooltip:()=>activeTooltip?.(),emptyState, controls, entry, updateHidden, showEntries, setFiltersExpanded, tooltip, updateAverage};
 })();

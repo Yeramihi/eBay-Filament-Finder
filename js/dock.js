@@ -21,12 +21,10 @@ globalThis.EbayDock = (() => {
       const listings=persistent[persistentKey]?.listings || [];
       const references=new Map(listings.map(listing=>[listing.url,listing]));
       for(const row of oldRows) references.set(row.url,{url:row.url,title:row.title,image:row.image});
-      if(references.size) {
-        const response=await chrome.runtime.sendMessage({type:'finder-cache-read',urls:[...references.keys()]});
-        state.results=(response?.items || []).flatMap(item=>(item.rows || []).map(row=>({
-          ...references.get(item.url),...row,url:item.url
-        })));
-      }
+      // Let the search view fetch cache rows in small asynchronous batches.
+      // The dock's own controls must never wait for a full variant snapshot.
+      state.restoreListings=[...references.values()];
+      state.results=[];
       // Restoring data does not initiate a scan or restore failed requests.
       state.checked=state.total=new Set((state.results || []).map(row=>row.url)).size;
       state.failures=[];
@@ -43,7 +41,7 @@ globalThis.EbayDock = (() => {
     pending = pending.then(async () => {
       await chrome.storage.session.set(snapshot);
       if(mode==='results') {
-        const {results=[],failures,...preferences}=state;
+        const {results=[],failures,restoreListings,...preferences}=state;
         const listings=[...new Map(results.map(row=>[row.url,{url:row.url,title:row.title,image:row.image}])).values()];
         await chrome.storage.local.set({[persistentKey]:{state:preferences,listings}});
       }
@@ -55,7 +53,7 @@ globalThis.EbayDock = (() => {
     // Input changes must never serialize the full scan on every keystroke.
     if ('results' in patch) dirty[rowsKey] = mode==='results' ? [...new Map(patch.results.map(row=>[row.url,{url:row.url,title:row.title,image:row.image}])).values()] : patch.results;
     if ('failures' in patch) dirty[failuresKey] = patch.failures;
-    const {results,failures,...preferences} = state;
+    const {results,failures,restoreListings,...preferences} = state;
     dirty[stateKey] = preferences;
     clearTimeout(timer);
     timer = setTimeout(flush,250);
