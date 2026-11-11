@@ -60,8 +60,8 @@ globalThis.EbaySettings = (() => {
     let backgroundParallel = defaults.parallelListings;
     const validParallel = count => Number.isInteger(count) && count >= 1 && count <= 999;
     function updateScanControls() {
-      const background = scanMode.value === 'background';
-      // Serial modes only override the display, never the saved background count.
+      const background = scanMode.value !== 'visible';
+      // Visible tabs only override the display, never the saved parallel count.
       parallel.value = background ? backgroundParallel : 1;
       parallel.disabled = !background;
       warning.hidden = !background || !(parallel.valueAsNumber > 20);
@@ -94,12 +94,12 @@ globalThis.EbaySettings = (() => {
     display.addEventListener('change', () => save({'finder:display': display.value}));
     scanMode.addEventListener('change', () => {updateScanControls();save({'finder:scanMode':scanMode.value});});
     parallel.addEventListener('input', () => {
-      if (scanMode.value !== 'background') return;
+      if (scanMode.value === 'visible') return;
       if (validParallel(parallel.valueAsNumber)) backgroundParallel = parallel.valueAsNumber;
       warning.hidden = !(parallel.valueAsNumber > 20);
     });
     parallel.addEventListener('change', () => {
-      if (scanMode.value !== 'background') return;
+      if (scanMode.value === 'visible') return;
       if (parallel.reportValidity()) {
         backgroundParallel = parallel.valueAsNumber;
         save({'parallelListings': backgroundParallel});

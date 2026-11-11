@@ -290,7 +290,7 @@
     scanMode=['background','visible','mixed'].includes(settings['finder:scanMode']) ? settings['finder:scanMode'] : settings['finder:visibleScan']===true ? 'visible' : 'background';
     const parallel=settings.parallelListings;
     scanParallel=Number.isInteger(parallel)&&parallel>=1&&parallel<=999 ? parallel : EbaySettings.defaultParallel;
-    if(scanMode!=='background') scanParallel=1;
+    if(scanMode==='visible') scanParallel=1;
   }
   const listingActions=new Set();
   async function clearListing(listing) {
@@ -381,18 +381,15 @@
     scanNotice.hidden = true;
     updateScanBanner();
     render();
-    async function request(listing) {
+    const fallbacks=[];
+    const unreadable=response=>response?.error || !Array.isArray(response?.rows);
+    const eligible=listing=>!onlyURL || listing.url===onlyURL;
+    const hasQueued=()=>queue.some(eligible);
+    async function request(listing, visible=scanMode==='visible') {
       try {
-        let response = await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url,visible:scanMode === 'visible',
+        let response = await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url,visible,
+          returnToSource:visible && scanMode==='mixed',
           progress:{current:checked+1,total},forceRefresh:listing.forceRefresh===true});
-        // Mixed mode promotes only the failed candidate, on its first error.
-        // This worker remains serial until that visible job is resolved.
-        if (scanMode === 'mixed' && !stopped && (response?.error || !Array.isArray(response?.rows))) {
-          scanNotice.textContent = 'Background check failed. Opening this listing for your attention…';
-          scanNotice.hidden = false;
-          response = await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url,visible:true,returnToSource:true,
-            progress:{current:checked+1,total},forceRefresh:listing.forceRefresh===true});
-        }
         if (response?.pending) {
           visibleJob = response.jobId;
           while (response?.pending) {
@@ -411,50 +408,82 @@
       }
       catch (error) { return {error:error.message}; }
     }
+    function accept(listing,response) {
+      // Preserve completed in-flight work after Stop; unfinished listings resume.
+      if (stopped && unreadable(response)) {
+        queue.unshift(listing);
+        return false;
+      }
+      if (scanMode !== 'background' && (response?.cancelled || response?.paused || (!response?.skipped && !Array.isArray(response?.rows)))) {
+        queue.unshift(listing);
+        stopped = userPaused = true;
+        scanNotice.textContent = response?.error || 'Visible scan paused. Click Scan to resume.';
+        scanNotice.hidden = false;
+        return false;
+      }
+      checked++;
+      if (response?.skipped) {
+        failures.push({...listing,error:'Skipped by user.'});
+        EbayDock.save({failures});showFailures();
+      } else if (unreadable(response)) {
+        failures.push({...listing,error:response?.error || 'No response from extension.'});
+        stopped = true;
+        EbayDock.save({failures});showFailures();
+      } else {
+        results=results.filter(row=>row.url!==listing.url);
+        results.push(...response.rows.map(row=>({...row,url:listing.url,title:row.title||listing.title,image:row.image||listing.image})));
+        EbayDock.save({results});
+      }
+      render();
+      return !stopped;
+    }
     async function worker() {
-      while (!stopped && queue.length) {
-        const index=onlyURL ? queue.findIndex(candidate=>candidate.url===onlyURL) : 0;
-        if(index<0) return;
+      // A first mixed-mode error closes this gate immediately. Requests already
+      // in flight finish, but no worker takes another background candidate.
+      while (!stopped && !fallbacks.length && hasQueued()) {
+        const index=queue.findIndex(eligible);
         const [listing]=queue.splice(index,1);
-        let response = await request(listing);
-        if (scanMode === 'background' && !stopped && (response?.error || !Array.isArray(response?.rows))) {
-          await new Promise(resolve => setTimeout(resolve,3000));
-          if (!stopped) response = await request(listing);
-        }
-        // Keep successful in-flight work even after Stop. Only unfinished
-        // requests return to the queue, so resuming does not fetch them twice.
-        if (stopped && (response?.error || !Array.isArray(response?.rows))) {
-          queue.unshift(listing);
+        let response=await request(listing);
+        if (scanMode==='mixed' && !stopped && unreadable(response)) {
+          listing.visibleFallback=true;
+          fallbacks.push(listing);
+          scanNotice.textContent='Background check failed. Waiting for active requests before opening the visible scan tab…';
+          scanNotice.hidden=false;
           return;
         }
-        if (scanMode !== 'background' && (response?.cancelled || response?.paused || (!response?.skipped && !Array.isArray(response?.rows)))) {
-          queue.unshift(listing);
-          stopped = userPaused = true;
-          scanNotice.textContent = response?.error || 'Visible scan paused. Click Scan to resume.';
-          scanNotice.hidden = false;
-          return;
+        if (scanMode==='background' && !stopped && unreadable(response)) {
+          await new Promise(resolve=>setTimeout(resolve,3000));
+          if(!stopped) response=await request(listing);
         }
-        checked++;
-        if (response?.skipped) {
-          failures.push({...listing,error:'Skipped by user.'});
-          EbayDock.save({failures});showFailures();
-        } else if (response?.error || !Array.isArray(response?.rows)) {
-          failures.push({...listing,error:response?.error || 'No response from extension.'});
-          stopped = true;
-          EbayDock.save({failures});
-          showFailures();
-        } else {
-          results=results.filter(row=>row.url!==listing.url);
-          results.push(...response.rows.map(row => ({...row,url:listing.url,title:row.title||listing.title,image:row.image||listing.image})));
-          EbayDock.save({results});
-        }
-        render();
-        if(onlyURL) return;
+        if(!accept(listing,response) || onlyURL) return;
       }
     }
     try {
-      await Promise.all(Array.from({length:onlyURL ? 1 : Math.min(scanParallel,queue.length)}, () => worker()));
+      while(!stopped && hasQueued()) {
+        // Recover interrupted visible jobs first when a user resumes the scan.
+        if(scanMode==='mixed') {
+          for(let index=0;index<queue.length;) {
+            if(eligible(queue[index]) && queue[index].visibleFallback) fallbacks.push(...queue.splice(index,1));
+            else index++;
+          }
+        }
+        if(!fallbacks.length) {
+          await Promise.all(Array.from({length:onlyURL ? 1 : Math.min(scanParallel,queue.length)},()=>worker()));
+        }
+        // All background workers have drained before this single owner opens a
+        // tab. Multiple concurrent failures reuse that tab strictly one by one.
+        while(!stopped && fallbacks.length) {
+          const listing=fallbacks.shift();
+          scanNotice.textContent='Opening a failed listing for your attention…';
+          scanNotice.hidden=false;
+          const response=await request(listing,true);
+          if(!accept(listing,response)) break;
+        }
+        if(onlyURL) break;
+        // Recovery finished: the next worker group uses the chosen parallelism.
+      }
     } finally {
+      if(fallbacks.length) queue.unshift(...fallbacks);
       running = false;
       scan.disabled = false;
       stop.disabled = true;

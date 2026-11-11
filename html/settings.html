@@ -43,7 +43,7 @@
           <option value="mixed">Mixed</option>
         </select>
       </div>
-      <p class="hint" id="scan-mode-help">Background checks listings without opening tabs. Visible tabs opens one scan tab and reuses it for every listing. Mixed reuses a visible tab only when a background check fails, then returns to background scanning. Visible tabs and Mixed check one listing at a time. Press Escape to stop. Applies when you next click Scan.</p>
+      <p class="hint" id="scan-mode-help">Background checks listings without opening tabs. Visible tabs opens one scan tab and reuses it for every listing. Mixed starts with your chosen parallel count. On an error it pauses new background requests, lets active requests finish, and checks failed listings one at a time in the visible tab. It then resumes parallel background scanning. Visible tabs always checks one listing at a time. Press Escape to stop. Applies when you next click Scan.</p>
       <div class="row">
         <label for="cache-age">Maximum saved listing age</label>
         <select id="cache-age"><option value="day">1 day</option><option value="week">1 week</option><option value="month">1 month</option><option value="never">Never dropped</option></select>
@@ -53,7 +53,7 @@
         <label for="parallel">Listings in parallel</label>
         <input id="parallel" type="number" min="1" max="999" step="1" required aria-describedby="scan-help">
       </div>
-      <p class="hint" id="scan-help">Background defaults to 5. Visible tabs and Mixed show 1; switching back restores your Background value. Changes apply to the next scan.</p>
+      <p class="hint" id="scan-help">Background and Mixed share your saved parallel count (default 5). Visible tabs shows 1; switching back restores your saved value. Changes apply to the next scan.</p>
       <p class="warning" id="warning" hidden>More than 20 can trigger eBay request limits or verification checks.</p>
     </fieldset>
     <p id="status" role="status">Loading settings…</p>
