@@ -3,6 +3,10 @@ importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
 let hiddenChanges=Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'finder-cache-purge' && sender.id === chrome.runtime.id) {
+    EbayListingCache.purge().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
   if (message?.type === 'finder-hidden-set' && sender.id === chrome.runtime.id) {
     const task=hiddenChanges.then(async()=>{
       const url=EbayListingCache.canonical(message.url);

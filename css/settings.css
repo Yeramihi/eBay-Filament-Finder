@@ -27,3 +27,7 @@ a { color: #174b83; }
 #reset-question { margin: 0 0 14px; }
 
 input[type="checkbox"] { width:20px; min-height:20px; height:20px; margin:4px 0; justify-self:start; accent-color:#17365d; }
+
+.storage-row { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;flex-wrap:wrap; }
+#storage-size { display:block;font-size:18px;font-weight:650;color:#17365d; }
+#storage-status.error { color:#9b4218; }

@@ -56,6 +56,15 @@
       <p class="hint" id="scan-help">Background and Mixed share your saved parallel count (default 5). Visible tabs shows 1; switching back restores your saved value. Changes apply to the next scan.</p>
       <p class="warning" id="warning" hidden>More than 20 can trigger eBay request limits or verification checks.</p>
     </fieldset>
+    <fieldset id="storage">
+      <legend>Storage</legend>
+      <div class="storage-row">
+        <div><span>Local storage used</span><output id="storage-size" aria-live="polite">Calculating…</output></div>
+        <button id="purge-cache" type="button">Purge all cache</button>
+      </div>
+      <p class="hint">Includes saved listings, search snapshots and settings. Purging removes cached listing data and scan snapshots, keeping preferences and hidden-list choices. Scans and opened listings can save fresh data afterwards.</p>
+      <p id="storage-status" class="hint" role="status"></p>
+    </fieldset>
     <p id="status" role="status">Loading settings…</p>
     <footer>
       <a id="feedback">Send feedback</a>

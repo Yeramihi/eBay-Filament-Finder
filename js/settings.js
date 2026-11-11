@@ -22,6 +22,43 @@ globalThis.EbaySettings = (() => {
     const parallel = root.getElementById('parallel');
     const scanMode = root.getElementById('scan-mode');
     const cacheAge = root.getElementById('cache-age');
+    const storageSize=root.getElementById('storage-size');
+    const purgeCache=root.getElementById('purge-cache');
+    const storageStatus=root.getElementById('storage-status');
+    let storageTimer, disposed=false, storageReading=false, storageAgain=false;
+    async function updateStorageSize() {
+      if(disposed) return;
+      if(storageReading) {storageAgain=true;return;}
+      storageReading=true;
+      try {
+        const bytes=await chrome.storage.local.getBytesInUse(null);
+        if(disposed) return;
+        const units=['bytes','KB','MB','GB','TB'];let amount=bytes,index=0;
+        while(amount>=1000&&index<units.length-1) {amount/=1000;index++;}
+        storageSize.textContent=`${index ? amount.toFixed(2) : amount} ${units[index]}`;
+        storageSize.title=`${bytes.toLocaleString()} bytes stored locally by this extension`;
+      } catch {if(!disposed) storageSize.textContent='Size unavailable';}
+      finally {
+        storageReading=false;
+        if(storageAgain&&!disposed) {storageAgain=false;scheduleStorageSize();}
+      }
+    }
+    function scheduleStorageSize() {
+      if(disposed || storageTimer) return;
+      storageTimer=setTimeout(()=>{storageTimer=undefined;updateStorageSize();},500);
+    }
+    purgeCache.addEventListener('click',async()=>{
+      purgeCache.disabled=true;
+      storageStatus.classList.remove('error');storageStatus.textContent='Purging cache…';
+      try {
+        await pendingSave;
+        const response=await chrome.runtime.sendMessage({type:'finder-cache-purge'});
+        if(!response?.purged) throw new Error(response?.error || 'Could not purge the cache. Try again.');
+        storageStatus.textContent='Cache purged. Preferences and hidden-list choices kept.';
+      } catch(error) {storageStatus.textContent=error.message;storageStatus.classList.add('error');}
+      finally {purgeCache.disabled=false;await updateStorageSize();}
+    });
+    updateStorageSize();
     const reset = root.getElementById('reset');
     const confirmation = root.getElementById('reset-confirmation');
     const no = root.getElementById('reset-no');
@@ -134,6 +171,7 @@ globalThis.EbaySettings = (() => {
     });
 
     const onChange = (changes, area) => {
+      if(area==='local') scheduleStorageSize();
       if (area === 'local' && changes.parallelListings) {
         const count = changes.parallelListings.newValue;
         backgroundParallel = validParallel(count) ? count : defaults.parallelListings;
@@ -164,7 +202,7 @@ globalThis.EbaySettings = (() => {
       showStatus('Changes save automatically.');
     }).catch(() => showStatus('Could not load settings. Reopen this window to retry.', true));
 
-    return () => chrome.storage.onChanged.removeListener(onChange);
+    return () => {disposed=true;clearTimeout(storageTimer);chrome.storage.onChanged.removeListener(onChange);};
   }
 
   let activeDialog;

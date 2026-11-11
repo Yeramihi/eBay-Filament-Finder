@@ -50,10 +50,19 @@ globalThis.EbayListingCache = (() => {
   const get=value=>serial(()=>read(value));
   const put=(value,rows)=>serial(()=>write(value,rows));
   const remove=value=>serial(()=>chrome.storage.local.remove(prefix+canonical(value)));
+  const purge=()=>serial(async()=>{
+    const local=await chrome.storage.local.get(null);
+    const localKeys=Object.keys(local).filter(key=>key.startsWith(prefix)||key.startsWith('finder:saved-page:'));
+    if(localKeys.length) await chrome.storage.local.remove(localKeys);
+    const session=await chrome.storage.session.get(null);
+    const sessionKeys=Object.keys(session).filter(key=>key.startsWith('finder-page:'));
+    if(sessionKeys.length) await chrome.storage.session.remove(sessionKeys);
+    return {purged:true};
+  });
   const prune=()=>serial(removeExpired);
   chrome.storage.onChanged.addListener((changes,area)=>{
     if(area==='local'&&changes[ageKey]) prune().catch(console.error);
   });
   prune().catch(console.error);
-  return {get,put,remove,canonical};
+  return {get,put,remove,purge,canonical};
 })();

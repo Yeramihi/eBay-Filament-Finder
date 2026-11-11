@@ -29,3 +29,5 @@ Requires Chrome 114 or later.
 The normal listing sidebar confirms cache saves with the saved timestamp, retries transient failures, and offers Retry cache save when persistence fails. Unknown stock status no longer silently prevents saving fresh listing data; unknown values remain unknown.
 
 The extension requests `unlimitedStorage` so its persistent listing cache can exceed Chrome’s normal local-storage quota. Existing stored data needs no migration. Retention settings and per-listing cache deletion still apply; this does not remove disk-space limits.
+
+Settings shows live local-storage usage and a Purge all cache button. Purging removes persistent listing data and local/session scan snapshots, preserving preferences and hidden-list choices. Active scans and opened listings may save fresh data after a purge.
