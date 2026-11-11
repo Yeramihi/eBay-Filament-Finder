@@ -177,3 +177,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === SETTINGS_MENU) openSettings(tab).catch(console.error);
   if (info.menuItemId === WHATS_NEW_MENU) openReleaseNotes().catch(console.error);
 });
+
+// Notify content scripts when their tab becomes active. Ordinary tabs without
+// the search sidebar simply have no listener; no additional permissions needed.
+chrome.tabs.onActivated.addListener(({tabId})=>{
+  chrome.tabs.sendMessage(tabId,{type:'finder-search-activated'}).catch(()=>{});
+});

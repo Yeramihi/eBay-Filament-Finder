@@ -137,6 +137,7 @@
 
   const rowElements = new WeakMap();
   let renderGeneration = 0;
+  let cacheRevision=0, cacheSyncTimer, cacheSyncBusy=false, cacheSyncAgain=false;
   async function render() {
     const generation = ++renderGeneration;
     // Let the browser paint typed text before filtering and building rows.
@@ -279,21 +280,68 @@
   // Expired data is also removed from the current results and deduplication set.
   chrome.storage.onChanged.addListener((changes,area)=>{
     if(area!=='local') return;
-    if(changes[hiddenKey]) {hiddenListings=changes[hiddenKey].newValue || {};render();}
+    if(changes[hiddenKey]) {cacheRevision++;hiddenListings=changes[hiddenKey].newValue || {};render();}
     if(!restored) return;
-    const urls=Object.keys(changes).filter(key=>key.startsWith('finder:cache:item:')).map(key=>key.slice('finder:cache:item:'.length)).filter(url=>results.some(row=>row.url===url));
-    if(!urls.length) return;
-    chrome.runtime.sendMessage({type:'finder-cache-read',urls}).then(response=>{
-      for(const item of response?.items || []) {
-        const listing=results.find(row=>row.url===item.url);
-        if(!listing) continue;
-        results=results.filter(row=>row.url!==item.url);
-        if(item.rows?.length) results.push(...item.rows.map(row=>({...listing,...row,url:item.url})));
-        else {seen.delete(item.url);checked=Math.max(0,checked-1);total=Math.max(checked,total-1);}
-      }
-      EbayDock.save({results});render();
-    }).catch(console.error);
+    if(Object.keys(changes).some(key=>key.startsWith('finder:cache:item:'))) {
+      cacheRevision++;
+      scheduleCacheSync();
+    }
   });
+  function scheduleCacheSync() {
+    if(running || listingActions.size) return;
+    clearTimeout(cacheSyncTimer);
+    cacheSyncTimer=setTimeout(()=>refreshFromCache().catch(console.error),100);
+  }
+  async function refreshFromCache() {
+    await stateReady;
+    if(running || listingActions.size) return;
+    if(cacheSyncBusy) {cacheSyncAgain=true;return;}
+    cacheSyncBusy=true;
+    const revision=cacheRevision;
+    try {
+      const references=new Map(results.map(row=>[row.url,{url:row.url,title:row.title,image:row.image}]));
+      for(const listing of await listings()) if(!references.has(listing.url)) references.set(listing.url,listing);
+      const [response,saved]=await Promise.all([
+        chrome.runtime.sendMessage({type:'finder-cache-read',urls:[...references.keys()]}),
+        chrome.storage.local.get(hiddenKey)
+      ]);
+      // A tab can become active while Scan is starting, or a cache write can
+      // race this read. Never apply a snapshot over newer work or a cache clear.
+      if(running || listingActions.size || revision!==cacheRevision) return;
+      if(!Array.isArray(response?.items)) return;
+      hiddenListings=saved[hiddenKey] || {};
+      for(const item of response.items) {
+        const old=results.filter(row=>row.url===item.url);
+        if(item.rows?.length) {
+          const queued=queue.find(listing=>listing.url===item.url);
+          if(queued?.forceRefresh) continue;
+          if(!old.length) {
+            const failure=failures.some(listing=>listing.url===item.url);
+            if(seen.has(item.url) && !queued && !failure) continue;
+            if(!seen.has(item.url)) {seen.add(item.url);checked++;total++;}
+            else if(queued) checked++;
+            if(queued) queue.splice(queue.indexOf(queued),1);
+            failures=failures.filter(listing=>listing.url!==item.url);
+          }
+          results=results.filter(row=>row.url!==item.url);
+          const listing=references.get(item.url);
+          results.push(...item.rows.map(row=>({...listing,...row,url:item.url,title:row.title||listing.title,image:row.image||listing.image})));
+        } else if(old.length) {
+          results=results.filter(row=>row.url!==item.url);
+          seen.delete(item.url);checked=Math.max(0,checked-1);total=Math.max(checked,total-1);
+        }
+      }
+      EbayDock.save({results,failures});showFailures();render();
+    } finally {
+      cacheSyncBusy=false;
+      if(cacheSyncAgain) {cacheSyncAgain=false;scheduleCacheSync();}
+    }
+  }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible') scheduleCacheSync();
+  });
+  window.addEventListener('focus',scheduleCacheSync);
+  window.addEventListener('pageshow',event=>{if(event.persisted) scheduleCacheSync();});
   root.querySelector('.results').addEventListener('toggle',persist);
   async function loadCached(candidates) {
     const unknown=[...new Map(candidates.filter(listing=>!seen.has(listing.url)).map(listing=>[listing.url,listing])).values()];
@@ -331,6 +379,7 @@
   }
   async function clearListing(listing) {
     if(running || listingActions.size) return;
+    cacheRevision++;
     listingActions.add(listing.url);render();
     try {
       const response=await chrome.runtime.sendMessage({type:'finder-cache-delete',url:listing.url});
@@ -373,6 +422,7 @@
 
   async function start() {
     if (running || listingActions.size) return;
+    cacheRevision++;
     scan.disabled = true;
     await stateReady;
     if(results.length) {
@@ -411,6 +461,7 @@
 
   async function processQueue(onlyURL) {
     if (running || stopped || !queue.length) return;
+    cacheRevision++;
     running = true;
     scan.disabled = true;
     stop.disabled = false;
@@ -603,6 +654,7 @@
     event.preventDefault();event.stopImmediatePropagation();stopScan();
   },true);
   chrome.runtime.onMessage.addListener((message,sender)=>{
+    if(sender.id===chrome.runtime.id && message?.type==='finder-search-activated') scheduleCacheSync();
     if (sender.id === chrome.runtime.id && message?.type === 'visible-scan-stop-source' &&
         running && (!visibleJob || visibleJob === message.jobId)) stopScan();
   });
