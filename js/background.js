@@ -1,9 +1,36 @@
-importScripts('variants.js');
+importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
-const cache = new Map();
-const MAX_AGE = 30 * 60 * 1000;
+
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'finder-cache-read' && sender.id === chrome.runtime.id) {
+    Promise.all((message.urls || []).map(async url => {
+      try {return {url,...await EbayListingCache.get(url)};} catch {return {url};}
+    })).then(items=>respond({items}),()=>respond({items:[]}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-delete' && sender.id === chrome.runtime.id) {
+    (async()=>{
+      const url=EbayListingCache.canonical(message.url);
+      if(new URL(sender.url).origin!==new URL(url).origin) throw new Error('Unsupported listing URL.');
+      await EbayListingCache.remove(url);
+      return {removed:true};
+    })().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-refresh' && sender.id === chrome.runtime.id) {
+    (async()=>{
+      const url=EbayListingCache.canonical(sender.url);
+      if (!Array.isArray(message.rows) || !message.rows.length || message.rows.some(row=>!row || (!row.inStock&&!row.outOfStock))) return {};
+      return EbayListingCache.put(url,message.rows);
+    })().then(respond,()=>respond({}));
+    return true;
+  }
+  if (message?.type === 'open-finder-guide' && sender.id === chrome.runtime.id) {
+    chrome.tabs.create({url:chrome.runtime.getURL('html/guide.html')})
+      .then(() => respond({opened:true}), () => respond({opened:false}));
+    return true;
+  }
   if (message?.type === 'get-finder-settings-view' && sender.id === chrome.runtime.id) {
     Promise.all(['html/settings.html', 'css/settings.css'].map(async path => {
       const response = await fetch(chrome.runtime.getURL(path));
@@ -13,6 +40,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       console.error(error);
       respond(null);
     });
+    return true;
+  }
+  if (message?.type?.startsWith('visible-scan-')) {
+    EbayVisibleScanner.handle(message,sender).then(respond,error=>respond({error:error.message}));
     return true;
   }
   if (message?.type !== 'scan-listing') return;
@@ -25,11 +56,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         !/^\/itm\/\d+$/.test(url.pathname)) throw new Error('Unsupported listing URL.');
     const sourceTab = sender.tab?.id;
     if (!Number.isInteger(sourceTab)) throw new Error('Missing source tab.');
-    let pageCache = cache.get(sourceTab);
-    if (!pageCache) { pageCache = new Map(); cache.set(sourceTab,pageCache); }
     const key = url.origin + url.pathname;
-    const cached = pageCache.get(key);
-    if (cached && Date.now() - cached.time < MAX_AGE) return cached.result;
+    const cached = message.forceRefresh === true ? null : await EbayListingCache.get(key);
+    if (cached) return cached;
+    if (message.visible === true) return EbayVisibleScanner.start(key,sender,message.progress,message.returnToSource === true);
     const response = await fetch(key, { credentials: 'include', signal: AbortSignal.timeout(20000) });
     if (!response.ok) throw new Error(`eBay returned HTTP ${response.status}.`);
     const html = await response.text();
@@ -50,17 +80,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       coupon = EbayVariants.getCoupon(html);
     }
     const result = { rows: EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon})) };
-    // A request started before a page reload must not refill the new page's cache.
-    if (cache.get(sourceTab) === pageCache) {
-      pageCache.set(key, { time: Date.now(), result });
-    }
-    return result;
+    return EbayListingCache.put(key,result.rows);
   })().then(result => respond(result), error => respond({ error: error.message }));
   return true;
 });
 
-chrome.tabs.onUpdated.addListener((id,change) => { if (change.status === 'loading') cache.delete(id); });
-chrome.tabs.onRemoved.addListener(id => { cache.delete(id); });
+chrome.tabs.onUpdated.addListener((id,change) => { EbayVisibleScanner.updated(id,change).catch(console.error); });
+chrome.tabs.onRemoved.addListener(id => { EbayVisibleScanner.removed(id).catch(console.error); });
 
 // Release notes are bundled with the extension and can be revisited from its icon.
 const SETTINGS_MENU = 'finder-settings';
@@ -101,6 +127,7 @@ chrome.windows.onRemoved.addListener(id => {
   if (id === settingsWindow) settingsWindow = undefined;
 });
 
+const GUIDE_MENU = 'finder-guide';
 const WHATS_NEW_MENU = 'finder-whats-new';
 function openReleaseNotes() {
   return chrome.tabs.create({url:chrome.runtime.getURL('html/whats-new.html')});
@@ -111,6 +138,9 @@ async function handleInstallation(details) {
     if (chrome.runtime.lastError) console.error(chrome.runtime.lastError.message);
   });
   chrome.contextMenus.create({id:WHATS_NEW_MENU,title:'What’s new',contexts:['action']}, () => {
+    if (chrome.runtime.lastError) console.error(chrome.runtime.lastError.message);
+  });
+  chrome.contextMenus.create({id:GUIDE_MENU,title:'User guide',contexts:['action']}, () => {
     if (chrome.runtime.lastError) console.error(chrome.runtime.lastError.message);
   });
   const version = chrome.runtime.getManifest().version;
@@ -125,6 +155,7 @@ chrome.runtime.onInstalled.addListener(details => {
   handleInstallation(details).catch(console.error);
 });
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === GUIDE_MENU) chrome.tabs.create({url:chrome.runtime.getURL('html/guide.html')}).catch(console.error);
   if (info.menuItemId === SETTINGS_MENU) openSettings(tab).catch(console.error);
   if (info.menuItemId === WHATS_NEW_MENU) openReleaseNotes().catch(console.error);
 });

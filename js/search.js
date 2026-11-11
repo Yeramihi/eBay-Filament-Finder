@@ -10,6 +10,9 @@
       *{box-sizing:border-box}section{font:12px/1.4 system-ui,sans-serif;background:white;color:#18212f;border:0}
       button,input{font:inherit}button{cursor:pointer}.controls{display:flex;flex-wrap:wrap;gap:6px;padding:9px}input{min-width:0;flex:1;padding:6px;border:1px solid #aab7c7;border-radius:5px}.scan-status{flex:0 0 100%;font-size:11px;color:#58677a}
       .scan-status:empty{display:none}
+      .finder-pagination{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:9px;border-bottom:1px solid #d7e1ed;background:#f4f7fb}
+      .finder-page-number{white-space:nowrap;font-weight:650;color:#17365d}
+      .finder-pagination .finder-button:disabled{opacity:.5;cursor:default}
       .scan-status.is-scanning{animation:scan-pulse 1.8s ease-in-out infinite}
       @keyframes scan-pulse{50%{opacity:.65}}
       @media (prefers-reduced-motion: reduce){.scan-status.is-scanning{animation:none}}
@@ -29,6 +32,11 @@
       .filters{display:grid;gap:4px;padding:9px 9px 0}.combine{display:flex;gap:20px;padding:3px 0}.combine label{display:flex;align-items:center;gap:4px}.combine input{flex:none;width:auto;margin:0;padding:0}a{color:#174b83;text-decoration:none}a:hover{text-decoration:underline}.truncated{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}small{display:block;color:#64748b}details{padding:8px 9px}summary{cursor:pointer}li{margin:5px 0}[hidden]{display:none!important}
     </style>
     <section class="finder-layout" aria-label="eBay Filament finder">
+      <nav class="finder-pagination" aria-label="Search results pages">
+        <button type="button" class="finder-button finder-previous-page" aria-label="Previous results page" disabled>‹ Previous</button>
+        <span class="finder-page-number" role="status" aria-live="polite">Page 1</span>
+        <button type="button" class="finder-button finder-next-page" aria-label="Next results page" disabled>Next ›</button>
+      </nav>
       <div class="finder-toolbar" id="finder-toolbar" hidden>
         <div class="filters">
           <label for="variant-query">Variant</label><input id="variant-query" placeholder='e.g. ASA yellow' autocomplete="off">
@@ -46,8 +54,30 @@
       </div>
     </section>`;
   EbayDock.setCompact(true);
+  EbayDock.setAutoCollapsed(!EbaySearchHasFilament());
   EbayDock.mount(host);
-  const syncSort = EbayCards.controls(root,[['title','Listing'],['label','Variant'],['total','Total'],['spool','Price per item*'],['average','Average matching price']],(key,direction)=>{sortTouched=true;sortKey=key;ascending=direction;EbayDock.saveSort(key,direction);render();}, updateCompactWidth);
+  const syncSort = EbayCards.controls(root,[['title','Listing'],['label','Variant'],['total','Individual purchase'],['spool','Bulk purchase*'],['average','Mixed bulk average']],(key,direction)=>{sortTouched=true;sortKey=key;ascending=direction;EbayDock.saveSort(key,direction);render();}, updateCompactWidth);
+  const previousPage = root.querySelector('.finder-previous-page');
+  const nextPage = root.querySelector('.finder-next-page');
+  const pageNumber = root.querySelector('.finder-page-number');
+  function syncPagination() {
+    const pagination = EbaySearchPagination();
+    previousPage.disabled = !pagination.previous;
+    nextPage.disabled = !pagination.next;
+    const label = `Page ${pagination.page}`;
+    if (pageNumber.textContent !== label) pageNumber.textContent = label;
+    return pagination;
+  }
+  function navigatePage(direction) {
+    // Resolve again at click time: eBay can replace or disable its links after
+    // the finder last refreshed. Use the real link to preserve eBay handlers.
+    const pagination = syncPagination();
+    pagination[direction]?.click();
+    scheduleDiscovery();
+  }
+  previousPage.addEventListener('click', () => navigatePage('previous'));
+  nextPage.addEventListener('click', () => navigatePage('next'));
+  syncPagination();
   const input = root.querySelector('#variant-query');
   const listingInput = root.querySelector('#listing-query');
   const combineButtons = [...root.querySelectorAll('[name=combine]')];
@@ -72,7 +102,23 @@
   let sortKey = 'total', ascending = true;
   let appliedQuery = '', appliedListingQuery = '', appliedCombine = 'and';
   let sortTouched = false;
+  let userPaused = false, scanMode = 'background', visibleJob;
+  let scanStarted = false, scanParallel = EbaySettings.defaultParallel;
+  const queue = [], seen = new Set();
   const collator = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
+
+  const scanBanner = document.createElement('div');
+  scanBanner.id = 'ebay-finder-scan-notice';
+  scanBanner.setAttribute('role','status');
+  scanBanner.setAttribute('aria-live','polite');
+  scanBanner.style.cssText = 'all:initial!important;position:fixed!important;top:12px!important;left:50%!important;transform:translateX(-50%)!important;z-index:2147483647!important;box-sizing:border-box!important;max-width:calc(100vw - 112px)!important;padding:12px 18px!important;border:2px solid #17365d!important;border-radius:10px!important;background:#fff3d5!important;color:#17365d!important;font:600 14px/1.45 system-ui,sans-serif!important;text-align:center!important;box-shadow:0 4px 18px #0003!important;display:none!important;';
+  document.documentElement.append(scanBanner);
+  function updateScanBanner() {
+    const active = running && !stopped;
+    scanBanner.textContent = active ? 'Filament finder is scanning. Press Escape (Esc) to stop the scan.' : '';
+    scanBanner.style.setProperty('display',active?'block':'none','important');
+  }
+
 
   function updateCompactWidth() {
     const filtersCollapsed = root.querySelector('.finder-toolbar').hidden;
@@ -128,11 +174,18 @@
     const entries = [];
     const outOfStock = [];
     const averageUpdates = [];
+    const actionRows=new Map();
+    for(const row of visible) if(!actionRows.has(row.url) || (actionRows.get(row.url).outOfStock&&!row.outOfStock)) actionRows.set(row.url,row);
     let batchStarted = performance.now();
     for (const row of visible) {
       if(performance.now()-batchStarted>8){await new Promise(resolve=>setTimeout(resolve,0));if(generation!==renderGeneration)return;batchStarted=performance.now();}
       let entry=rowElements.get(row);
-      if(!entry){entry=EbayCards.entry(row,price,{search:true});rowElements.set(row,entry);}
+      if(!entry){entry=EbayCards.entry(row,price,{search:true,clearCache:()=>clearListing(row),refresh:()=>refreshListing(row)});rowElements.set(row,entry);}
+      const actions=entry.querySelector('.listing-cache-actions');
+      if(actions) {
+        actions.hidden=actionRows.get(row.url)!==row;
+        for(const button of actions.querySelectorAll('button')) button.disabled=running || listingActions.size>0;
+      }
       averageUpdates.push([entry,row.outOfStock ? null : averages.get(row.url)]);
       (row.outOfStock ? outOfStock : entries).push(entry);
     }
@@ -177,7 +230,7 @@
     if (restored) EbayDock.save({query:appliedQuery,listingQuery:appliedListingQuery,combine:appliedCombine,appliedQuery,appliedListingQuery,appliedCombine,checked,total,running,stopped,
       discoveryVersion:2,resultsOpen:root.querySelector('.results').open});
   }
-  const stateReady = EbayDock.ready.then(saved => {
+  const stateReady = EbayDock.ready.then(async saved => {
     input.value = saved.query || '';
     listingInput.value = saved.listingQuery || '';
     appliedQuery = saved.appliedQuery ?? input.value;
@@ -188,83 +241,281 @@
     results = trustedScan ? saved.results || [] : []; failures = trustedScan ? saved.failures || [] : [];
     checked = trustedScan ? saved.checked || 0 : 0; total = trustedScan ? saved.total || 0 : 0;
     if(!trustedScan) EbayDock.save({results:[],failures:[]});
+    // Completed listings remain cached; a fresh user scan may discover more.
+    for (const listing of [...results, ...failures]) seen.add(listing.url);
+    total = checked;
     stopped = !!(saved.stopped || saved.running);
     root.querySelector('.results').open = saved.resultsOpen !== false;
     if (results.length) EbayCards.setFiltersExpanded(root, true);
-    restored = true; showFailures(); render();
+    restored = true;
+    // Search snapshots cannot cover a new query or a newly opened results page.
+    // Match its current organic results against the shared listing cache too.
+    try {await loadCached(await listings());} catch(error) {console.error(error);}
+    showFailures(); render();
+  });
+  // An explicitly opened listing replaces its entire saved variant set.
+  // Expired data is also removed from the current results and deduplication set.
+  chrome.storage.onChanged.addListener((changes,area)=>{
+    if(area!=='local' || !restored) return;
+    const urls=Object.keys(changes).filter(key=>key.startsWith('finder:cache:item:')).map(key=>key.slice('finder:cache:item:'.length)).filter(url=>results.some(row=>row.url===url));
+    if(!urls.length) return;
+    chrome.runtime.sendMessage({type:'finder-cache-read',urls}).then(response=>{
+      for(const item of response?.items || []) {
+        const listing=results.find(row=>row.url===item.url);
+        if(!listing) continue;
+        results=results.filter(row=>row.url!==item.url);
+        if(item.rows?.length) results.push(...item.rows.map(row=>({...listing,...row,url:item.url})));
+        else {seen.delete(item.url);checked=Math.max(0,checked-1);total=Math.max(checked,total-1);}
+      }
+      EbayDock.save({results});render();
+    }).catch(console.error);
   });
   root.querySelector('.results').addEventListener('toggle',persist);
+  async function loadCached(candidates) {
+    const unknown=[...new Map(candidates.filter(listing=>!seen.has(listing.url)).map(listing=>[listing.url,listing])).values()];
+    if(!unknown.length) return;
+    const response=await chrome.runtime.sendMessage({type:'finder-cache-read',urls:unknown.map(listing=>listing.url)});
+    const byURL=new Map(unknown.map(listing=>[listing.url,listing]));
+    for(const item of response?.items || []) {
+      if(!item.rows?.length || seen.has(item.url)) continue;
+      const listing=byURL.get(item.url);
+      seen.add(item.url);checked++;total++;
+      results.push(...item.rows.map(row=>({...row,...listing,image:row.image||listing.image})));
+    }
+    EbayDock.save({results});
+    render();
+  }
+  async function configureScan() {
+    const settings=await chrome.storage.local.get(['parallelListings','finder:visibleScan','finder:scanMode']).catch(()=>({}));
+    scanMode=['background','visible','mixed'].includes(settings['finder:scanMode']) ? settings['finder:scanMode'] : settings['finder:visibleScan']===true ? 'visible' : 'background';
+    const parallel=settings.parallelListings;
+    scanParallel=Number.isInteger(parallel)&&parallel>=1&&parallel<=999 ? parallel : EbaySettings.defaultParallel;
+    if(scanMode!=='background') scanParallel=1;
+  }
+  const listingActions=new Set();
+  async function clearListing(listing) {
+    if(running || listingActions.size) return;
+    listingActions.add(listing.url);render();
+    try {
+      const response=await chrome.runtime.sendMessage({type:'finder-cache-delete',url:listing.url});
+      if(!response?.removed) throw new Error(response?.error || 'Could not clear this listing.');
+      results=results.filter(row=>row.url!==listing.url);
+      if(seen.delete(listing.url)) {checked=Math.max(0,checked-1);total=Math.max(checked,total-1);}
+      EbayDock.save({results});
+    } catch(error) {showScanNotice(error.message);}
+    finally {listingActions.delete(listing.url);render();}
+  }
+  async function refreshListing(listing) {
+    if(running || listingActions.size) return;
+    listingActions.add(listing.url);render();
+    const previousStopped=stopped, previousPaused=userPaused;
+    try {
+      await configureScan();
+      // A manual refresh bypasses retention without discarding the old data
+      // first: a failed request must leave the last known result available.
+      const queued=queue.find(candidate=>candidate.url===listing.url);
+      if(queued) queued.forceRefresh=true;
+      else queue.unshift({url:listing.url,title:listing.title,image:listing.image,forceRefresh:true});
+      const failed=failures.some(failure=>failure.url===listing.url);
+      failures=failures.filter(failure=>failure.url!==listing.url);
+      if(seen.has(listing.url) && !failed) checked=Math.max(0,checked-1);
+      else if(!seen.has(listing.url)) {seen.add(listing.url);total++;}
+      stopped=userPaused=false;
+      EbayDock.save({failures});showFailures();
+      await processQueue(listing.url);
+    } catch(error) {showScanNotice(error.message);}
+    finally {stopped=stopped||previousStopped;userPaused=userPaused||previousPaused;listingActions.delete(listing.url);render();}
+  }
+  function enqueue(candidates) {
+    for (const listing of candidates) {
+      if (seen.has(listing.url)) continue;
+      seen.add(listing.url);
+      queue.push(listing);
+      total++;
+    }
+  }
+
   async function start() {
-    if (running) return;
-    running=true; scan.disabled=true;
-    updateCompactWidth();
-    scanNotice.hidden = true;
-    const [settings] = await Promise.all([
-      chrome.storage.local.get('parallelListings').catch(() => ({})),
-      stateReady
-    ]);
-    const parallel = settings.parallelListings;
-    const scanParallel = Number.isInteger(parallel) && parallel >= 1 && parallel <= 999 ? parallel : EbaySettings.defaultParallel;
-    let queue;
-    try { queue = await listings(); }
+    if (running || listingActions.size) return;
+    scan.disabled = true;
+    await stateReady;
+    if(results.length) {
+      const urls=[...new Set(results.map(row=>row.url))];
+      const response=await chrome.runtime.sendMessage({type:'finder-cache-read',urls});
+      const valid=new Set((response?.items || []).filter(item=>item.rows?.length).map(item=>item.url));
+      for(const url of urls) if(!valid.has(url)) {seen.delete(url);checked=Math.max(0,checked-1);total=Math.max(checked,total-1);}
+      results=results.filter(row=>valid.has(row.url));
+      EbayDock.save({results});
+    }
+    if (!scanStarted) {
+      input.value = EbaySearchQuery().replace(/\bfilament\b/gi, '')
+        .replace(/"\s*"/g, '').replace(/\s+/g, ' ').trim();
+      appliedQuery = input.value;
+      EbayCards.setFiltersExpanded(root, true);
+    }
+    await configureScan();
+    try {
+      const candidates=await listings();
+      await loadCached(candidates);
+      enqueue(candidates);
+    }
     catch {
       showScanNotice('Refresh the eBay search page, then try Scan again.');
       return;
     }
+    scanStarted = true;
+    userPaused = false;
+    stopped = false;
     if (!queue.length) {
-      showScanNotice('No visible organic search results found in the main results list. Sponsored and recommended items are excluded.');
+      showScanNotice(total ? 'All discovered listings are already cached.' : 'No visible organic search results found in the main results list. Sponsored and recommended items are excluded.');
       return;
     }
-    running=true; stopped=false; results=[]; failures=[]; checked=0; total=queue.length;
-    EbayDock.save({results,failures});
-    scan.disabled=true; stop.disabled=false; showFailures(); render();
-    let next = 0;
-    let recovering = false;
-    const retryListings = [];
+    processQueue();
+  }
+
+  async function processQueue(onlyURL) {
+    if (running || stopped || !queue.length) return;
+    running = true;
+    scan.disabled = true;
+    stop.disabled = false;
+    scanNotice.hidden = true;
+    updateScanBanner();
+    render();
     async function request(listing) {
-      try { return await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url}); }
+      try {
+        let response = await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url,visible:scanMode === 'visible',
+          progress:{current:checked+1,total},forceRefresh:listing.forceRefresh===true});
+        // Mixed mode promotes only the failed candidate, on its first error.
+        // This worker remains serial until that visible job is resolved.
+        if (scanMode === 'mixed' && !stopped && (response?.error || !Array.isArray(response?.rows))) {
+          scanNotice.textContent = 'Background check failed. Opening this listing for your attention…';
+          scanNotice.hidden = false;
+          response = await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url,visible:true,returnToSource:true,
+            progress:{current:checked+1,total},forceRefresh:listing.forceRefresh===true});
+        }
+        if (response?.pending) {
+          visibleJob = response.jobId;
+          while (response?.pending) {
+            if (stopped) await chrome.runtime.sendMessage({type:'visible-scan-cancel'});
+            response = await chrome.runtime.sendMessage({type:'visible-scan-poll',jobId:visibleJob});
+            if (response?.pending) {
+              scanNotice.textContent = response.detail || 'Scanning the visible listing tab…';
+              scanNotice.hidden = false;
+              await new Promise(resolve => setTimeout(resolve,750));
+            }
+          }
+          visibleJob = undefined;
+          scanNotice.hidden = true;
+        }
+        return response;
+      }
       catch (error) { return {error:error.message}; }
     }
-    function recordSuccess(listing,response) {
-      checked++;
-      results.push(...response.rows.map(row => ({...row,...listing,image:row.image||listing.image})));
-      EbayDock.save({results});
-      render();
-    }
     async function worker() {
-      while (!stopped && !recovering && next < queue.length) {
-        const listing = queue[next++];
-        const response = await request(listing);
-        if (stopped) return;
-        if (response?.error || !response?.rows) {
-          // Drain requests already in flight before restarting at the failed listings.
-          recovering = true;
-          retryListings.push(listing);
-        } else recordSuccess(listing,response);
+      while (!stopped && queue.length) {
+        const index=onlyURL ? queue.findIndex(candidate=>candidate.url===onlyURL) : 0;
+        if(index<0) return;
+        const [listing]=queue.splice(index,1);
+        let response = await request(listing);
+        if (scanMode === 'background' && !stopped && (response?.error || !Array.isArray(response?.rows))) {
+          await new Promise(resolve => setTimeout(resolve,3000));
+          if (!stopped) response = await request(listing);
+        }
+        // Keep successful in-flight work even after Stop. Only unfinished
+        // requests return to the queue, so resuming does not fetch them twice.
+        if (stopped && (response?.error || !Array.isArray(response?.rows))) {
+          queue.unshift(listing);
+          return;
+        }
+        if (scanMode !== 'background' && (response?.cancelled || response?.paused || (!response?.skipped && !Array.isArray(response?.rows)))) {
+          queue.unshift(listing);
+          stopped = userPaused = true;
+          scanNotice.textContent = response?.error || 'Visible scan paused. Click Scan to resume.';
+          scanNotice.hidden = false;
+          return;
+        }
+        checked++;
+        if (response?.skipped) {
+          failures.push({...listing,error:'Skipped by user.'});
+          EbayDock.save({failures});showFailures();
+        } else if (response?.error || !Array.isArray(response?.rows)) {
+          failures.push({...listing,error:response?.error || 'No response from extension.'});
+          stopped = true;
+          EbayDock.save({failures});
+          showFailures();
+        } else {
+          results=results.filter(row=>row.url!==listing.url);
+          results.push(...response.rows.map(row => ({...row,url:listing.url,title:row.title||listing.title,image:row.image||listing.image})));
+          EbayDock.save({results});
+        }
+        render();
+        if(onlyURL) return;
       }
     }
     try {
-      await Promise.all(Array.from({length:Math.min(scanParallel,queue.length)}, () => worker()));
-      if (recovering && !stopped) {
-        await new Promise(resolve => setTimeout(resolve,3000));
-        const remaining = [...retryListings,...queue.slice(next)];
-        for (const listing of remaining) {
-          if (stopped) break;
-          const response = await request(listing);
-          if (stopped) break;
-          if (response?.error || !response?.rows) {
-            checked++;
-            failures.push({...listing,error:response?.error || 'No response from extension.'});
-            stopped = true;
-            EbayDock.save({failures});
-            showFailures();
-            break;
-          }
-          recordSuccess(listing,response);
-        }
-      }
-    } finally {running=false; scan.disabled=false; stop.disabled=true; render();}
+      await Promise.all(Array.from({length:onlyURL ? 1 : Math.min(scanParallel,queue.length)}, () => worker()));
+    } finally {
+      running = false;
+      scan.disabled = false;
+      stop.disabled = true;
+      updateScanBanner();
+      render();
+      // Close the reusable scan tab only when the complete accumulated queue
+      // is drained. Cancelled scans retain it so a manual Resume can reuse it.
+      if (!onlyURL && !stopped && queue.length) processQueue();
+      else if (!stopped && scanMode !== 'background') chrome.runtime.sendMessage({type:'visible-scan-finish'}).catch(() => {});
+    }
   }
+
+  let discoveryTimer;
+  let resultsKey = location.href + '\n' + EbaySearchResultsKey();
+  async function discover() {
+    syncPagination();
+    const key = location.href + '\n' + EbaySearchResultsKey();
+    if (key !== resultsKey) {
+      resultsKey = key;
+      if (EbayDock.isCollapsed()) EbayDock.setAutoCollapsed(!EbaySearchHasFilament());
+    }
+    await stateReady;
+    const previousTotal = total;
+    try {
+      const candidates=await listings();
+      await loadCached(candidates);
+      if(scanStarted && !listingActions.size) enqueue(candidates);
+    }
+    catch { return; }
+    // A failed listing ends that scan attempt, not automatic discovery. New
+    // candidates resume it; only an explicit Stop keeps processing paused.
+    if (!scanStarted || listingActions.size) return;
+    if (!userPaused && total > previousTotal) stopped = false;
+    if (!stopped && !userPaused) processQueue();
+  }
+  function scheduleDiscovery() {
+    clearTimeout(discoveryTimer);
+    discoveryTimer = setTimeout(discover,250);
+  }
+  // Shadow DOM updates never reach this observer. Ignore the dock host and
+  // our layout attributes too, so automatic opening cannot trigger a loop.
+  const observer = new MutationObserver(records => {
+    if (records.some(record => {
+      const target = record.target.nodeType === Node.ELEMENT_NODE ? record.target : record.target.parentElement;
+      if (target?.closest('#ebay-finder-dock, #ebay-filament-finder, #ebay-finder-page-layout, #ebay-finder-scan-notice')) return false;
+      if (record.type === 'attributes' && target === document.documentElement) return false;
+      if (record.type === 'childList' && [...record.addedNodes, ...record.removedNodes].every(node =>
+        node.nodeType === Node.ELEMENT_NODE && node.matches('#ebay-finder-dock, #ebay-filament-finder, #ebay-finder-page-layout, #ebay-finder-scan-notice'))) return false;
+      return true;
+    })) scheduleDiscovery();
+  });
+  observer.observe(document.documentElement, {subtree:true, childList:true, characterData:true,
+    attributes:true, attributeFilter:['href','class','hidden','aria-hidden','style','aria-current','aria-disabled','disabled']});
+  window.addEventListener('popstate',scheduleDiscovery);
+  window.addEventListener('hashchange',scheduleDiscovery);
+  // pushState/replaceState in the page's world cannot be intercepted reliably
+  // from an isolated content script. Check the URL without patching eBay code.
+  let lastURL = location.href;
+  setInterval(() => {
+    if (location.href !== lastURL) { lastURL = location.href; scheduleDiscovery(); }
+  },750);
   function showScanNotice(message) {
     running = false;
     scan.disabled = false;
@@ -273,7 +524,26 @@
     render();
   }
   scan.addEventListener('click',start);
-  stop.addEventListener('click',()=>{stopped=true; stop.disabled=true;});
+  function stopScan() {
+    if (!running) return;
+    userPaused=true; stopped=true; stop.disabled=true;
+    updateScanBanner();
+    if (scanMode !== 'background') chrome.runtime.sendMessage({type:'visible-scan-cancel'}).catch(() => {});
+  }
+  stop.addEventListener('click',stopScan);
+  // Capture Escape before the dock's ordinary Escape-to-collapse handler.
+  // It works even while typing in a filter or when the sidebar is collapsed.
+  window.addEventListener('keydown',event=>{
+    if (event.key !== 'Escape' || event.isComposing || !running) return;
+    event.preventDefault();event.stopImmediatePropagation();stopScan();
+  },true);
+  chrome.runtime.onMessage.addListener((message,sender)=>{
+    if (sender.id === chrome.runtime.id && message?.type === 'visible-scan-stop-source' &&
+        running && (!visibleJob || visibleJob === message.jobId)) stopScan();
+  });
+  window.addEventListener('pagehide',()=>{
+    if (scanMode !== 'background' && (running || visibleJob)) chrome.runtime.sendMessage({type:'visible-scan-cancel'}).catch(() => {});
+  });
   function applyFilters() {
     appliedQuery = input.value;
     appliedListingQuery = listingInput.value;

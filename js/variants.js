@@ -277,12 +277,12 @@ globalThis.EbayVariants = (() => {
     }
     const estimate = totalEstimate(row);
     if (estimate.coupon) {
-      return `Experimental coupon estimate — check the coupon details on the listing page for limits, minimum spend, expiry and eligibility. Enter the code at checkout and verify manually.\nItem before coupon: ${item}\nCoupon −${estimate.coupon.percent}%: −${money(estimate.saving,row.currency)}\nPostage (not discounted): ${postage}\nTotal after coupon: ${money(estimate.amount,row.currency,row.totalApproximate || row.approximate)}${estimate.shippingUnknown ? '\n⚠ Postage is unknown and is not included.' : ''}`;
+      return `Experimental coupon estimate — check the coupon details on the listing page for limits, minimum spend, expiry and eligibility. Enter the code at checkout and verify manually.\nItem before coupon: ${item}\nCoupon −${estimate.coupon.percent}%: −${money(estimate.saving,row.currency)}\nPostage (not discounted): ${postage}\nIndividual purchase after coupon: ${money(estimate.amount,row.currency,row.totalApproximate || row.approximate)}${estimate.shippingUnknown ? '\n⚠ Postage is unknown and is not included.' : ''}`;
     }
     if (typeof row.total !== 'number' && typeof row.amount === 'number') {
       return `Item: ${item}\nPostage: ${postage}\n⚠ Item price only. Postage price is not recognised; delivery is not included.`;
     }
-    return `Item: ${item}\nPostage: ${postage}\nTotal: ${pair(row.total,row.currency,row.totalApproximate,originalTotal)}`;
+    return `Item: ${item}\nPostage: ${postage}\nIndividual purchase: ${pair(row.total,row.currency,row.totalApproximate,originalTotal)}`;
   }
   function getCoupon(source) {
     let texts = [];

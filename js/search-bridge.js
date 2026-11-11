@@ -54,6 +54,47 @@
     return [...found.values()];
   }
 
+  // Opening the finder reads title elements only, including sponsored titles.
+  // Discovery below keeps its stricter organic-listing rules.
+  globalThis.EbaySearchResultsKey = () => [...document.querySelectorAll(resultLists)]
+    .filter(list => !list.closest(secondary))
+    .flatMap(list => [...list.querySelectorAll('.s-item .s-item__title, .s-card .s-card__title, .s-item h3, .s-card h3')])
+    .filter(title => !title.closest(secondary) && !hidden(title))
+    .map(title => `${title.closest('.s-item, .s-card')?.querySelector('a[href*="/itm/"]')?.href || ''}:${title.textContent}`)
+    .join('\n');
+  globalThis.EbaySearchHasFilament = () => [...document.querySelectorAll(resultLists)].some(list =>
+    !list.closest(secondary) && [...list.querySelectorAll('.s-item .s-item__title, .s-card .s-card__title, .s-item h3, .s-card h3')].some(title =>
+      !title.closest(secondary) && !hidden(title) && /\bfilament\b/i.test(title.textContent || '')));
+  globalThis.EbaySearchQuery = () => {
+    const field = document.querySelector('#gh-ac, input[name="_nkw"]');
+    return field ? field.value.trim() : (new URL(location.href).searchParams.get('_nkw') || '').trim();
+  };
+  globalThis.EbaySearchPagination = () => {
+    const pagination = [...document.querySelectorAll(
+      '#srp-river-results .pagination, .srp-river-results .pagination, #srp-river-main .pagination, .srp-main .pagination'
+    // eBay wraps genuine pagination in .srp-river-answer too. That wrapper is
+    // excluded for listing discovery, but must remain eligible for navigation.
+    )].find(nav => !nav.closest(secondary.replace('.srp-river-answer, ', '')) && !hidden(nav));
+    function link(direction) {
+      if (!pagination) return null;
+      const selector = direction === 'previous'
+        ? 'a.pagination__previous[href], a[rel="prev"][href], a[aria-label="Go to previous search page"][href]'
+        : 'a.pagination__next[href], a[rel="next"][href], a[aria-label="Go to next search page"][href]';
+      return [...pagination.querySelectorAll(selector)].find(anchor => {
+        if (hidden(anchor) || anchor.closest('[aria-disabled="true"], [disabled]')) return false;
+        const href = anchor.getAttribute('href')?.trim();
+        if (!href || href.startsWith('#')) return false;
+        try {
+          const target = new URL(href, location.href);
+          return target.origin === new URL(location.href).origin && target.pathname.startsWith('/sch/');
+        } catch { return false; }
+      }) || null;
+    }
+    const selected = pagination?.querySelector('[aria-current="page"], [aria-current="true"]')?.textContent?.trim();
+    const value = /^\d+$/.test(selected || '') ? selected : new URL(location.href).searchParams.get('_pgn');
+    const page = /^\d+$/.test(value || '') && Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : 1;
+    return {page, previous:link('previous'), next:link('next')};
+  };
   globalThis.EbaySearchListings = listings;
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id) return;

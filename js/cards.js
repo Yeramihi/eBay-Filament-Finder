@@ -29,6 +29,14 @@ globalThis.EbayCards = (() => {
     .experimental-marker:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
     .finder-tooltip{position:fixed;inset:auto;margin:0;box-sizing:border-box;width:340px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);overflow:auto;padding:12px 14px;border:1px solid #aab7c7;border-radius:8px;background:#fff;color:#18212f;box-shadow:0 5px 22px #17365d40;font:12px/1.5 system-ui;white-space:normal;overflow-wrap:anywhere;text-align:left}
     .finder-tooltip strong{display:block;color:#17365d}.finder-tooltip p{margin:7px 0}.finder-tooltip strong:not(:first-child){margin-top:12px;padding-top:9px;border-top:1px solid #d7e1ed}
+    .listing-content{display:block;color:inherit!important;text-decoration:none!important}
+    .listing-content:focus-visible{outline:3px solid #2563eb}
+    .listing-cache-actions{display:flex;gap:5px;clear:both;margin-top:6px}
+    .listing-cache-actions[hidden]{display:none!important}
+    .listing-cache-actions button{font:11px/1.4 system-ui;padding:2px 6px;border:1px solid #aab7c7;border-radius:4px;background:#f4f7fb;color:#17365d;cursor:pointer}
+    .listing-cache-actions button:disabled{opacity:.5;cursor:default}
+    .finder-entries.lines .listing-content{display:inline}
+    .finder-entries.lines .listing-cache-actions{display:inline-flex;margin:0 0 0 8px;vertical-align:middle}
     .finder-entry::after{content:'';display:block;clear:both}.finder-entries.lines{gap:2px;padding:6px 8px}.finder-entries.lines .finder-entry{min-height:0;padding:3px 0;border:0;border-radius:0;background:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}.finder-entries.lines a.finder-entry{color:#174b83!important;text-decoration:underline!important;text-underline-offset:2px}.finder-entries.lines a.finder-entry:hover{background:transparent;color:#0f3158!important}.finder-entry .line-label{display:none}.finder-entries.lines .field{display:none}.finder-entries.lines .line-label{display:inline;font-weight:400}.finder-entries.lines img{display:none}.finder-entries.lines .finder-entry::after{display:none}
   `;
   function emptyState({scanning=false,outOfStock=false}={}) {
@@ -133,14 +141,14 @@ globalThis.EbayCards = (() => {
     const field=document.createElement('span');field.className='field average-price';field.dataset.sortField='average';field.classList.toggle('sort-active',sortKey==='average');
     const money=amount=>format({amount,currency:average.currency,approximate:average.approximate});
     const priceText = `${money(average.amount)}${average.offer ? `/item (${average.offer.quantity}-item offer)` : ''}${average.offer?.shippingUnknown ? ' ⚠' : ''}`;
-    field.append(document.createTextNode(`Average matching price: ${priceText} `));
+    field.append(document.createTextNode(`Mixed bulk average: ${priceText} `));
 
     const marker=document.createElement('span');marker.className='experimental-marker';
     marker.textContent='⚗';marker.setAttribute('aria-hidden','true');
     field.append(marker);
     const details=popup=>{
       const add=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;popup.append(node);};
-      add('strong','Average matching price · Experimental');
+      add('strong','Mixed bulk average · Experimental');
       add('p',`${average.count} matching, in-stock variant${average.count===1?'':'s'}.`);
       add('p','Each matching variant counts once; stock quantities are ignored.');
       if(average.offer){
@@ -159,7 +167,7 @@ globalThis.EbayCards = (() => {
     const total=item.querySelector('[data-sort-field="total"]');
     if(total)total.after(field);else item.append(field);
     const compact=item.querySelector('.line-label');
-    if(compact){const part=document.createElement('span');part.className='line-part average-compact';part.dataset.sortField='average';part.classList.toggle('sort-active',sortKey==='average');part.textContent=` → Average matching price: ${priceText} ⚗`;compact.append(part);tooltip(part,details); }
+    if(compact){const part=document.createElement('span');part.className='line-part average-compact';part.dataset.sortField='average';part.classList.toggle('sort-active',sortKey==='average');part.textContent=` → Mixed bulk average: ${priceText} ⚗`;compact.append(part);tooltip(part,details); }
   }
   function controls(root,keys,onSort,onFiltersToggle) {
     const style = document.createElement('style'); style.textContent=css; root.append(style);
@@ -186,7 +194,14 @@ globalThis.EbayCards = (() => {
       const y = event.detail ? event.clientY : rect.bottom;
       EbaySettings.open(x, y);
     });
-    toggleRow.append(settings, toggle);
+    const guide = document.createElement('button');
+    guide.type = 'button';
+    guide.className = 'finder-guide finder-button';
+    guide.textContent = 'User guide';
+    guide.addEventListener('click', () => {
+      chrome.runtime.sendMessage({type:'open-finder-guide'}).catch(console.error);
+    });
+    toggleRow.append(settings, guide, toggle);
     toolbar.before(toggleRow);
 
     const entries = root.querySelector('.finder-entries');
@@ -250,7 +265,7 @@ globalThis.EbayCards = (() => {
       for(const field of root.querySelectorAll('.finder-entry [data-sort-field]'))field.classList.toggle('sort-active',field.dataset.sortField===key || field.dataset.sortAlias===key);
     };
   }
-  function entry(row,format,{search=false,url,select}={}){
+  function entry(row,format,{search=false,url,select,clearCache,refresh}={}){
     const clickable=search || (!row.singleItem&&!row.outOfStock);
     const item=document.createElement(clickable?'a':'article');item.className='finder-entry';
     if(row.outOfStock)item.classList.add('out-of-stock');
@@ -261,19 +276,24 @@ globalThis.EbayCards = (() => {
     if(image){try{const source=new URL(image,location.href);if(source.protocol==='https:'){const img=document.createElement('img');img.src=source.href;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove(),{once:true});item.append(img);}}catch{}}
     else {const icon=document.createElement('img');icon.src=chrome.runtime.getURL('images/icons/icon-48.png');icon.alt='';item.append(icon);}
     const fields=[];
-    function field(label,value,tooltip,estimate=false){if(!value)return;const span=document.createElement('span');span.className='field'+(estimate?' estimate':'');span.dataset.sortField=({'Listing':'title','Variant':'label','Total':'total','Price per item*':'spool'})[label]||'';if(row.singleItem&&label==='Listing')span.dataset.sortAlias='label';span.textContent=`${label}: ${value}`;fields.push(span.textContent+(tooltip&&tooltip!==span.textContent?`\n${tooltip}`:''));if(tooltip)EbayCards.tooltip(span,tooltip);item.append(span);}
+    function field(label,value,tooltip,estimate=false){if(!value)return;const span=document.createElement('span');span.className='field'+(estimate?' estimate':'');span.dataset.sortField=({'Listing':'title','Variant':'label','Individual purchase':'total','Bulk purchase*':'spool'})[label]||'';if(row.singleItem&&label==='Listing')span.dataset.sortAlias='label';span.textContent=`${label}: ${value}`;fields.push(span.textContent+(tooltip&&tooltip!==span.textContent?`\n${tooltip}`:''));if(tooltip)EbayCards.tooltip(span,tooltip);item.append(span);}
     if(search||row.singleItem)field('Listing',row.title||row.label);
     if(!row.singleItem)field('Variant',row.label);
-    field('Total',EbayVariants.displayTotal(row,format),EbayVariants.priceTooltip(row));
+    field('Individual purchase',EbayVariants.displayTotal(row,format),EbayVariants.priceTooltip(row));
     const coupon=EbayVariants.totalEstimate(row).coupon;if(coupon)field('Coupon',`−${coupon.percent}%`,EbayVariants.priceTooltip(row));
-    field('Price per item*',EbayVariants.displaySpool(row,format),EbayVariants.spoolTooltip(row,EbayVariants.spoolEstimate(row)),true);
+    field('Bulk purchase*',EbayVariants.displaySpool(row,format),EbayVariants.spoolTooltip(row,EbayVariants.spoolEstimate(row)),true);
     field('Offer',EbayVariants.spoolLabel(row),EbayVariants.spoolTooltip(row,EbayVariants.spoolEstimate(row)));
+    if(row.cached && Number.isFinite(row.fetchedAt)) {
+      const age=Math.max(0,Date.now()-row.fetchedAt);
+      const ageText=age<60000?'less than a minute ago':age<3600000?`${Math.floor(age/60000)} min ago`:age<86400000?`${Math.floor(age/3600000)} hours ago`:`${Math.floor(age/86400000)} days ago`;
+      field('Cached',`${ageText} · ${new Date(row.fetchedAt).toLocaleString()}`,'Saved data, not retrieved live. Prices and stock may have changed. Open this listing to refresh its saved data.');
+    }
     field('Stock',row.outOfStock?'Out of stock':row.inStock?'In stock':'Unknown');
     if(!search&&!row.singleItem&&row.title)fields.unshift(`Listing: ${row.title}`);
 
     const compact=document.createElement('span');compact.className='line-label';
     for(const [key,text] of [
-      ['label',row.label||row.title||'Listing'],
+      ['label',(row.cached?'[Cached] ':'')+(row.label||row.title||'Listing')],
       ['total',EbayVariants.displayTotal(row,format)],
       ['spool',EbayVariants.displaySpool(row,format)]
     ]){
@@ -283,6 +303,25 @@ globalThis.EbayCards = (() => {
     }
     tooltip(compact,fields.join('\n'));
     item.append(compact);
+    if(search && (clearCache || refresh)) {
+      // Keep buttons outside the listing link for valid keyboard and click behavior.
+      const wrapper=document.createElement('article');wrapper.className=item.className;
+      item.className='listing-content';
+      const actions=document.createElement('span');actions.className='listing-cache-actions';
+      for(const [label,handler,description] of [
+        ['Clear cache',clearCache,'Remove all saved variants of this listing.'],
+        ['Refresh',refresh,'Retrieve this entire listing again, ignoring its saved age.']
+      ]) {
+        if(!handler) continue;
+        const button=document.createElement('button');button.type='button';button.textContent=label;
+        button.setAttribute('aria-label',`${label}: ${row.title||'listing'}`);
+        tooltip(button,description);
+        button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();handler();});
+        actions.append(button);
+      }
+      wrapper.append(item,actions);
+      return wrapper;
+    }
     return item;
   }
   function showEntries(root, entries, outOfStock) {

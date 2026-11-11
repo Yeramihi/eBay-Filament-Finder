@@ -6,6 +6,16 @@ Chrome extension for finding in-stock filament variants across eBay search resul
 
 The initial source import is the published **version 1.3**, extracted from `ebay-filament-finder-1.3.zip`. The `v1.3` tag preserves this baseline.
 
+## Version 1.4 development
+
+Version 1.4 is prepared on `work/1.4`; `main` and the `v1.3` tag retain the published 1.3 baseline until the update is reviewed and merged.
+
+Changes include automatic sidebar opening from listing titles, search-derived filters, Previous/Next navigation, accumulated and deduplicated pagination scans, optional eBay resizing, and revised price labels. Scanning supports Background, Visible tabs and Mixed modes, with a reusable visible tab, verification recovery controls and an Escape-to-stop notice.
+
+A persistent listing cache loads matching saved results on search pages and skips valid entries during scans. Settings allow retention of 1 day, 1 week (default), 1 month (30 days), or indefinitely. Cached results show retrieval timestamps; opening a listing refreshes its saved data. Per-listing Clear cache and Refresh controls act on all variants of that listing.
+
+The bundled guide has not yet been updated for scanning modes and persistent caching. Existing test files are included, but tests and browser checks have not been run for this prepared update at the user's request. This branch is for review and manual testing, not a published release.
+
 ## Install from source
 
 1. Download or clone this repository.

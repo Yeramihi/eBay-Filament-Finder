@@ -27,9 +27,28 @@
         <label for="display">Results layout</label>
         <select id="display"><option value="tiles">Tiles</option><option value="lines">Single lines</option></select>
       </div>
+      <div class="row">
+        <label for="resize-ebay">Resize eBay</label>
+        <input id="resize-ebay" type="checkbox" aria-describedby="resize-help">
+      </div>
+      <p class="hint" id="resize-help">Place the finder beside the page when checked. Otherwise it overlays the page. The collapsed bar always has its own space.</p>
     </fieldset>
     <fieldset id="scanning" disabled>
       <legend>Scanning</legend>
+      <div class="row">
+        <label for="scan-mode">Scanning mode</label>
+        <select id="scan-mode" aria-describedby="scan-mode-help">
+          <option value="background">Background</option>
+          <option value="visible">Visible tabs</option>
+          <option value="mixed">Mixed</option>
+        </select>
+      </div>
+      <p class="hint" id="scan-mode-help">Background checks listings without opening tabs. Visible tabs opens one scan tab and reuses it for every listing. Mixed reuses a visible tab only when a background check fails, then returns to background scanning. Visible tabs and Mixed check one listing at a time. Press Escape to stop. Applies when you next click Scan.</p>
+      <div class="row">
+        <label for="cache-age">Maximum saved listing age</label>
+        <select id="cache-age"><option value="day">1 day</option><option value="week">1 week</option><option value="month">1 month</option><option value="never">Never dropped</option></select>
+      </div>
+      <p class="hint">Default: 1 week. Saved listings survive browser restarts. Age is measured from retrieval, not reuse; 1 month means 30 days. Opening a listing refreshes its saved data.</p>
       <div class="row">
         <label for="parallel">Listings in parallel</label>
         <input id="parallel" type="number" min="1" max="999" step="1" required aria-describedby="scan-help">

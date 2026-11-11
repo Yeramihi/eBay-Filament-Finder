@@ -25,3 +25,5 @@ a { color: #174b83; }
 }
 #reset-confirmation::backdrop { background: #172a434d; }
 #reset-question { margin: 0 0 14px; }
+
+input[type="checkbox"] { width:20px; min-height:20px; height:20px; margin:4px 0; justify-self:start; accent-color:#17365d; }

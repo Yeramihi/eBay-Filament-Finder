@@ -1,6 +1,10 @@
-(() => {
+(async () => {
   "use strict";
 
+  // The universal scan reader owns extension-created scan tabs. Do not mount
+  // the normal listing dock or alter eBay's page width in those tabs.
+  try { if ((await chrome.runtime.sendMessage({type:'visible-scan-context'}))?.scan) return; }
+  catch { /* Normal browsing remains available if the worker is unavailable. */ }
   const listingUrl = location.href;
   const PANEL_ID = "ebay-variant-prices";
   if (document.getElementById(PANEL_ID)) return;
@@ -138,7 +142,7 @@
 
     const input = root.querySelector("input");
     const status = root.querySelector(".status");
-    const syncSort = EbayCards.controls(root,[['label','Variant'],['total','Total'],['spool','Price per item*']],(key,direction)=>{sortTouched=true;sortKey=key;ascending=direction;EbayDock.saveSort(key,direction);render();});
+    const syncSort = EbayCards.controls(root,[['label','Variant'],['total','Individual purchase'],['spool','Bulk purchase*']],(key,direction)=>{sortTouched=true;sortKey=key;ascending=direction;EbayDock.saveSort(key,direction);render();});
     const collator = new Intl.Collator(undefined, {
       sensitivity: "base",
       numeric: true
@@ -241,19 +245,17 @@
     };
   }
 
-  function readListing() {
-    const html=document.documentElement.outerHTML;
-    const scripts=Array.from(document.scripts,script=>script.textContent||'');
-    const variants=EbayVariants.getRows(scripts);
-    const itemId=location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
-    const rows=variants.length?variants:EbayVariants.getSingleItemRows(html,itemId?`${location.origin}/itm/${itemId}`:location.href);
-    const title=document.querySelector('h1.x-item-title__mainTitle, h1')?.textContent?.trim()||'';
-    const image=document.querySelector('meta[property="og:image"]')?.content||document.querySelector('.ux-image-carousel-item img')?.src;
-    const coupon=EbayVariants.getCoupon(document);
-    return EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,scripts),EbayVariants.getPostage(html)).map(row=>({...row,title,coupon,image:row.image||image}));
-  }
-  let updateRows, scheduled;
-  function refresh(){const rows=readListing();if(updateRows)updateRows(rows);else if(rows.length)updateRows=mount(rows);}
+  const readListing = () => EbayListingData();
+  let updateRows, scheduled, savedSignature;
+  function refresh(){const rows=readListing();
+    if(rows.length && rows.every(row=>row.inStock||row.outOfStock)) {
+      const signature=JSON.stringify(rows);
+      if(signature!==savedSignature) {
+        savedSignature=signature;
+        chrome.runtime.sendMessage({type:'finder-cache-refresh',rows}).catch(()=>{savedSignature=undefined;});
+      }
+    }
+    if(updateRows)updateRows(rows);else if(rows.length)updateRows=mount(rows);}
   refresh();
   const observer=new MutationObserver(records=>{
     if(records.every(record=>record.target.closest?.('#ebay-finder-dock')))return;

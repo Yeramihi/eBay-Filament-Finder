@@ -1,0 +1,259 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const source = fs.readFileSync(`${__dirname}/../js/search.js`, 'utf8');
+const tick = () => new Promise(resolve => setTimeout(resolve, 15));
+function element() {
+  return {hidden:false, open:true, value:'', disabled:false, textContent:'', style:{setProperty(){}},
+    classList:{toggle(){}}, handlers:{}, setAttribute(){}, append(){}, replaceChildren(){},
+    addEventListener(type, fn){this.handlers[type]=fn;}, closest(){return null;}};
+}
+function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,parallel=1,mode}={}) {
+  const nodes = new Map();
+  const windowHandlers = {}, runtimeHandlers = [], pageChildren = [], requestMessages = [];
+  const get = selector => {if (!nodes.has(selector)) nodes.set(selector, element()); return nodes.get(selector);};
+  get('.finder-toolbar').hidden = true;
+  const radio = {value:'and', checked:true};
+  const root = {querySelector:get, querySelectorAll:()=>[radio]};
+  const buttons = [], calls = [], pending = [], collapsed = [], snapshots = [], controlMessages = [], polls = [];
+  let candidates = [], hasFilament = false, observer;
+  let pagination = {page:1,previous:null,next:null};
+  const context = {
+    console, URL, Intl, Map, Set, WeakMap, performance, setTimeout:(fn,ms)=>setTimeout(fn,fastRetries && ms===3000?0:ms), clearTimeout, setInterval(){},
+    location:{href:'https://www.ebay.co.uk/sch/i.html?_nkw=yellow+PLA+silk'},
+    window:{addEventListener:(type,fn)=>{(windowHandlers[type] ||= []).push(fn);}}, Node:{ELEMENT_NODE:1},
+    document:{documentElement:{append:element=>pageChildren.push(element)}, getElementById(){return null;}, createElement(tag){
+      const e=element(); e.attachShadow=()=>root;
+      if(tag==='button')buttons.push(e); return e;
+    }},
+    MutationObserver:class {constructor(fn){observer=fn;} observe(){}},
+    chrome:{runtime:{onMessage:{addListener:fn=>runtimeHandlers.push(fn)},getURL:x=>x,sendMessage:message=>{if(message.type==='scan-listing'){requestMessages.push(message);calls.push(message.url);return new Promise(resolve=>pending.push(resolve));}controlMessages.push(message);if(message.type==='visible-scan-poll')return new Promise(resolve=>polls.push(resolve));return Promise.resolve({cancelled:true});}},
+      storage:{local:{get:async()=>({parallelListings:parallel,'finder:visibleScan':visibleMode,'finder:scanMode':mode})}}},
+    EbaySearchPagination:()=>pagination,
+    EbaySearchListings:()=>candidates,
+    EbaySearchResultsKey:()=>candidates.map(x=>x.url+':'+x.title).join('\n'),
+    EbaySearchHasFilament:()=>hasFilament,
+    EbaySearchQuery:()=>query,
+    EbaySettings:{defaultParallel:1},
+    EbayDock:{ready:Promise.resolve({}), setCompact(){},mount(){},setAutoCollapsed:x=>collapsed.push(x),
+      isCollapsed:()=>collapsed.at(-1)===true,
+      save:x=>snapshots.push(x),saveSort(){},onSortChange(){},getSort:async()=>null},
+    EbayCards:{controls:()=>()=>{},tooltip(){},setFiltersExpanded:(r,v)=>{get('.finder-toolbar').hidden=!v;},
+      showEntries(){},emptyState:()=>({}),entry:()=>({}),updateAverage(){}},
+    EbayVariants:{comparePrice:()=>0, terms:()=>[], matchingAverage:()=>null, matches:()=>true}
+  };
+  vm.runInNewContext(source,context);
+  return {get, buttons,calls,pending,collapsed,snapshots,controlMessages,polls,windowHandlers,runtimeHandlers,pageChildren,requestMessages,
+    setCandidates: x=>candidates=x,
+    setPagination:x=>pagination=x,
+    async ownMutation(){observer([{type:'attributes',target:{nodeType:1,closest:()=>({})}}]);await new Promise(r=>setTimeout(r,280));},
+    async discover(filament=false){hasFilament=filament;observer([{type:'childList',target:{nodeType:1,closest:()=>null},addedNodes:[{nodeType:1,matches:()=>false}],removedNodes:[]}]);await new Promise(r=>setTimeout(r,280));},
+    async complete(){pending.shift()({rows:[{label:'yellow PLA silk'}]});await tick();}
+  };
+}
+const listing = id => ({url:`https://www.ebay.co.uk/itm/${id}`,title:`Filament ${id}`});
+test('initial scan seeds and reveals filter; pagination extends and resumes without duplicates',async()=>{
+  const h=harness();await tick();assert.equal(h.collapsed[0],true);
+  h.setCandidates([listing(1),listing(2)]);
+  await h.buttons[0].handlers.click();await tick();
+  assert.equal(h.get('#variant-query').value,'yellow PLA silk');
+  assert.equal(h.get('.finder-toolbar').hidden,false);
+  assert.equal(h.calls.length,1);
+  h.setCandidates([listing(2),listing(3)]);await h.discover(true);
+  assert.equal(h.collapsed.at(-1),false);
+  await h.complete();await h.complete();await h.complete();
+  assert.deepEqual(h.calls,[listing(1).url,listing(2).url,listing(3).url]);
+  h.setCandidates([listing(3),listing(4)]);await h.discover();await h.complete();
+  assert.equal(h.calls.length,4);
+  await h.discover();assert.equal(h.calls.length,4);
+  assert.equal(h.snapshots.filter(x=>x.results).at(-1).results.length,4);
+});
+test('Stop retains pending work and manual Scan resumes without rescanning completed items',async()=>{
+  const h=harness();await tick();h.setCandidates([listing(1),listing(2)]);
+  await h.buttons[0].handlers.click();await tick();
+  h.buttons[1].handlers.click();await h.complete();
+  h.setCandidates([listing(2),listing(3)]);await h.discover();
+  assert.equal(h.calls.length,1);
+  await h.buttons[0].handlers.click();await tick();
+  await h.complete();await h.complete();
+  assert.deepEqual(h.calls,[listing(1).url,listing(2).url,listing(3).url]);
+  await h.buttons[0].handlers.click();await tick();assert.equal(h.calls.length,3);
+});
+test('title detection uses whole words and ignores non-title listing text',()=>{
+  const bridge=fs.readFileSync(`${__dirname}/../js/search-bridge.js`,'utf8');
+  let titles=[];
+  const list={closest:()=>null,querySelectorAll:()=>titles};
+  const context={document:{querySelectorAll:()=>[list],documentElement:{}},
+    chrome:{runtime:{onMessage:{addListener(){}}}},getComputedStyle:()=>({}),location:{href:'https://www.ebay.co.uk/sch/i.html'}};
+  vm.runInNewContext(bridge,context);
+  const title=textContent=>({textContent,closest:()=>null,getAttribute:()=>null,parentElement:null});
+  for(const [text,expected] of [['FILAMENT spool',true],['silk-filament',true],['filaments',false],['microfilament',false],['PLA spool',false]]){
+    titles=[title(text)];assert.equal(context.EbaySearchHasFilament(),expected,text);
+  }
+  titles=[];assert.equal(context.EbaySearchHasFilament(),false);
+});
+
+test('extension mutations do not trigger discovery or automatic opening',async()=>{
+  const h=harness();await tick();const before=h.collapsed.length;
+  await h.ownMutation();assert.equal(h.collapsed.length,before);
+});
+test('dock keeps open across results and can open again when new filament appears',async()=>{
+  const nodes=new Map();
+  const get=selector=>{if(!nodes.has(selector))nodes.set(selector,element());return nodes.get(selector);};
+  const root={querySelector:get,addEventListener(){}};
+  let restore;
+  const context={console,setTimeout,clearTimeout,innerWidth:1000,
+    location:{pathname:'/sch/i.html',origin:'https://www.ebay.co.uk',href:'https://www.ebay.co.uk/sch/i.html'},
+    window:{addEventListener(){}},
+    document:{head:{append(){}},documentElement:{style:{setProperty(){}},setAttribute(){},append(){}},createElement(){
+      const node=element();node.style={setProperty(){}};node.attachShadow=()=>root;return node;
+    }},
+    chrome:{storage:{session:{get:async()=>({}),set:async()=>{}},local:{get:()=>new Promise(resolve=>restore=resolve),set:async()=>{}},onChanged:{addListener(){}}}}
+  };
+  vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/dock.js`,'utf8'),context);
+  const dock=context.EbayDock;
+  dock.setAutoCollapsed(false);dock.mount(element());
+  restore({'finder:results:collapsed':true});await tick();
+  assert.equal(get('.content').hidden,false);
+  get('.rail').handlers.click();assert.equal(get('.content').hidden,true);
+  dock.setAutoCollapsed(true);assert.equal(get('.content').hidden,true);
+  dock.setAutoCollapsed(false);assert.equal(get('.content').hidden,false);
+  dock.setAutoCollapsed(true);assert.equal(get('.content').hidden,false);
+});
+test('pagination before the first user Scan never requests listings',async()=>{
+  const h=harness();await tick();
+  h.setCandidates([listing(1)]);await h.discover(true);
+  h.setCandidates([listing(2)]);await h.discover(true);
+  assert.deepEqual(h.calls,[]);
+  await h.buttons[0].handlers.click();await tick();await h.complete();
+  assert.deepEqual(h.calls,[listing(2).url]);
+});
+test('completed scan resumes repeatedly, keeping its filter and never repeating cached listings',async()=>{
+  const h=harness();await tick();h.setCandidates([listing(1)]);
+  await h.buttons[0].handlers.click();await tick();await h.complete();
+  h.get('#variant-query').value='custom filter';
+  h.get('.apply-filters').handlers.click();
+  for(let id=2;id<=5;id++){
+    h.setCandidates([listing(1),listing(id)]);await h.discover(true);await h.complete();
+  }
+  assert.equal(h.get('#variant-query').value,'custom filter');
+  assert.deepEqual(h.calls,[1,2,3,4,5].map(id=>listing(id).url));
+  assert.equal(h.snapshots.filter(x=>'checked' in x).at(-1).checked,5);
+});
+test('Resize eBay reserves full open width, protects the rail when collapsed and updates live',async()=>{
+  const nodes=new Map(), props=new Map(), styles=[];
+  const get=selector=>{if(!nodes.has(selector))nodes.set(selector,element());return nodes.get(selector);};
+  const root={querySelector:get,addEventListener(){}};
+  let restore,onChange;
+  const context={console,setTimeout,clearTimeout,innerWidth:1000,
+    location:{pathname:'/itm/123456789',origin:'https://www.ebay.co.uk',href:'https://www.ebay.co.uk/itm/123456789'},
+    window:{addEventListener(){}},
+    document:{head:{append:e=>styles.push(e)},documentElement:{style:{setProperty:(k,v)=>props.set(k,v)},setAttribute(){},append(){}},createElement(){
+      const node=element();node.style={setProperty(){}};node.attachShadow=()=>root;return node;
+    }},chrome:{storage:{session:{get:async()=>({}),set:async()=>{}},local:{get:()=>new Promise(resolve=>restore=resolve),set:async()=>{}},onChanged:{addListener:fn=>onChange=fn}}}
+  };
+  vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/dock.js`,'utf8'),context);
+  const dock=context.EbayDock;dock.mount(element());
+  assert.equal(props.get('--ebay-finder-inset'),'44px');
+  restore({'finder:resizeEbay':true});await tick();
+  assert.equal(props.get('--ebay-finder-inset'),'min(100vw, max(280px, 25vw))');
+  onChange({'finder:widthPercent':{newValue:50},'finder:side':{newValue:'left'}},'local');
+  assert.equal(props.get('--ebay-finder-inset'),'min(100vw, max(280px, 50vw))');
+  get('.rail').handlers.click();assert.equal(props.get('--ebay-finder-inset'),'44px');
+  get('.rail').handlers.click();dock.setCompact(true);
+  assert.equal(props.get('--ebay-finder-inset'),'min(320px, 100vw)');
+  onChange({'finder:resizeEbay':{newValue:false}},'local');
+  assert.equal(props.get('--ebay-finder-inset'),'44px');
+  assert.match(styles[0].textContent,/width:calc\(100% - var\(--ebay-finder-inset, 44px\)\)/);
+  assert.match(styles[0].textContent,/\.lightbox-dialog/);
+});
+
+test('new results resume after a request failure without retrying the already failed listing',async()=>{
+  const h=harness({fastRetries:true});await tick();h.setCandidates([listing(1)]);
+  await h.buttons[0].handlers.click();await tick();
+  h.pending.shift()({error:'Temporary eBay failure'});await tick();
+  h.pending.shift()({error:'Temporary eBay failure'});await tick();
+  assert.equal(h.buttons[0].disabled,false);
+  h.setCandidates([listing(1),listing(2)]);await h.discover(true);await h.complete();
+  assert.deepEqual(h.calls,[listing(1).url,listing(1).url,listing(2).url]);
+  assert.equal(h.snapshots.filter(x=>x.failures).at(-1).failures.length,1);
+});
+
+test('initial filter drops filament as a whole word regardless of case',async()=>{
+  for(const [query,expected] of [['FILAMENT yellow PLA silk filament','yellow PLA silk'],['"filament" PLA','PLA'],['filament',''],['microfilament PLA filaments','microfilament PLA filaments']]){
+    const h=harness({query});await tick();h.setCandidates([listing(1)]);
+    await h.buttons[0].handlers.click();await tick();await h.complete();
+    assert.equal(h.get('#variant-query').value,expected);
+  }
+});
+
+test('sidebar pagination refreshes page number, disabled buttons and stale links without starting a scan',async()=>{
+  const h=harness();await tick();let clicks=0,staleClicks=0;
+  assert.equal(h.get('.finder-previous-page').disabled,true);
+  assert.equal(h.get('.finder-next-page').disabled,true);
+  assert.equal(h.get('.finder-page-number').textContent,'Page 1');
+  h.setPagination({page:1,previous:null,next:{click:()=>staleClicks++}});await h.discover();
+  assert.equal(h.get('.finder-next-page').disabled,false);
+  h.setPagination({page:1,previous:null,next:{click:()=>clicks++}});
+  h.get('.finder-next-page').handlers.click();
+  assert.equal(clicks,1);assert.equal(staleClicks,0);
+  h.setPagination({page:2,previous:{click:()=>clicks++},next:null});await h.discover();
+  assert.equal(h.get('.finder-page-number').textContent,'Page 2');
+  assert.equal(h.get('.finder-next-page').disabled,true);
+  assert.equal(h.get('.finder-previous-page').disabled,false);
+  h.get('.finder-previous-page').handlers.click();assert.equal(clicks,2);
+  h.setPagination({page:1,previous:null,next:null});await h.discover();
+  assert.equal(h.get('.finder-previous-page').disabled,true);
+  assert.equal(h.get('.finder-next-page').disabled,true);
+  assert.deepEqual(h.calls,[]);
+});
+
+test('visible mode forces serial processing even when parallel is set to five',async()=>{
+  const h=harness({visibleMode:true,parallel:5});await tick();h.setCandidates([listing(1),listing(2)]);
+  await h.buttons[0].handlers.click();await tick();assert.equal(h.calls.length,1);
+  await h.complete();assert.equal(h.calls.length,2);await h.complete();
+});
+test('visible cancellation retains the candidate for Resume without clearing successful cache',async()=>{
+  const h=harness({visibleMode:true});await tick();h.setCandidates([listing(1),listing(2)]);
+  await h.buttons[0].handlers.click();await tick();await h.complete();
+  h.pending.shift()({cancelled:true,error:'User stopped visible scan'});await tick();
+  assert.equal(h.buttons[0].disabled,false);
+  assert.equal(h.snapshots.filter(s=>s.results).at(-1).results.length,1);
+  await h.buttons[0].handlers.click();await tick();await h.complete();
+  assert.deepEqual(h.calls,[listing(1).url,listing(2).url,listing(2).url]);
+  assert.equal(h.snapshots.filter(s=>s.results).at(-1).results.length,2);
+});
+test('visible job is polled while paused and retains its original candidate on cancel',async()=>{
+  const h=harness({visibleMode:true});await tick();h.setCandidates([listing(1)]);
+  await h.buttons[0].handlers.click();await tick();
+  h.pending.shift()({pending:true,jobId:'visible-job'});await tick();assert.equal(h.polls.length,1);
+  h.polls.shift()({cancelled:true,error:'Scan tab closed'});await tick();
+  assert.equal(h.buttons[0].disabled,false);assert.equal(h.get('.scan-notice').hidden,false);
+  assert.equal(h.snapshots.filter(s=>s.failures?.length).length,0);
+  await h.buttons[0].handlers.click();await tick();await h.complete();
+  assert.deepEqual(h.calls,[listing(1).url,listing(1).url]);
+});
+
+// These cases are provided for the user to run; this build was not tested.
+test('mixed retries only the failed candidate in a visible tab, then uses background again',async()=>{
+  const h=harness({mode:'mixed',parallel:5});await tick();h.setCandidates([listing(1),listing(2)]);
+  await h.buttons[0].handlers.click();await tick();
+  assert.equal(h.calls.length,1);assert.equal(h.requestMessages[0].visible,false);
+  h.pending.shift()({error:'eBay requires verification'});await tick();
+  assert.equal(h.calls.length,2);assert.equal(h.requestMessages[1].visible,true);
+  assert.equal(h.requestMessages[1].url,listing(1).url);
+  await h.complete();assert.equal(h.requestMessages[2].visible,false);
+  assert.equal(h.requestMessages[2].url,listing(2).url);await h.complete();
+  assert.equal(h.snapshots.filter(s=>s.results).at(-1).results.length,2);
+});
+test('Escape on the search page pauses scanning and retains queued candidates',async()=>{
+  const h=harness({mode:'mixed'});await tick();h.setCandidates([listing(1),listing(2)]);
+  await h.buttons[0].handlers.click();await tick();let prevented=false;
+  for(const handler of h.windowHandlers.keydown)handler({key:'Escape',preventDefault:()=>prevented=true,stopImmediatePropagation(){}});
+  assert.equal(prevented,true);assert.equal(h.buttons[1].disabled,true);
+  h.pending.shift()({error:'Interrupted'});await tick();
+  assert.equal(h.calls.length,1);
+  await h.buttons[0].handlers.click();await tick();await h.complete();await h.complete();
+  assert.deepEqual(h.calls,[listing(1).url,listing(1).url,listing(2).url]);
+});

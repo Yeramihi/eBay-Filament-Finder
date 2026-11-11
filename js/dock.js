@@ -4,16 +4,34 @@ globalThis.EbayDock = (() => {
   const item = location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
   const stateKey = `finder-page:${item ? location.origin+'/itm/'+item : location.href}`;
   let state = {}, host, root, collapsed = false, side = 'right', widthPercent = 25, widthTouched = false;
-  let compact = false;
+  let compact = false, autoCollapsed, collapseTouched = false, resizeEbay = false, resizeTouched = false;
   const rowsKey = `${stateKey}:rows`, failuresKey = `${stateKey}:failures`;
   let timer, dirty = {}, pending = Promise.resolve();
-  const ready = chrome.storage.session.get([stateKey,rowsKey,failuresKey]).then(saved => {
-    state = saved[stateKey] || {};
-    // Accept old combined snapshots and migrate large arrays on the next save.
-    if (Object.hasOwn(saved,rowsKey)) state.results = saved[rowsKey];
-    else if (state.results) dirty[rowsKey] = state.results;
-    if (Object.hasOwn(saved,failuresKey)) state.failures = saved[failuresKey];
-    else if (state.failures) dirty[failuresKey] = state.failures;
+  const persistentKey = `finder:saved-page:${location.href}`;
+  const ready = Promise.all([
+    chrome.storage.session.get([stateKey,rowsKey,failuresKey]),
+    mode === 'results' ? chrome.storage.local.get(persistentKey) : Promise.resolve({})
+  ]).then(async ([saved,persistent]) => {
+    const sessionState=saved[stateKey];
+    state=sessionState || persistent[persistentKey]?.state || {};
+    if (Object.hasOwn(saved,rowsKey)) state.results=saved[rowsKey];
+    if (Object.hasOwn(saved,failuresKey)) state.failures=saved[failuresKey];
+    if(mode==='results') {
+      const oldRows=state.results || [];
+      const listings=persistent[persistentKey]?.listings || [];
+      const references=new Map(listings.map(listing=>[listing.url,listing]));
+      for(const row of oldRows) references.set(row.url,{url:row.url,title:row.title,image:row.image});
+      if(references.size) {
+        const response=await chrome.runtime.sendMessage({type:'finder-cache-read',urls:[...references.keys()]});
+        state.results=(response?.items || []).flatMap(item=>(item.rows || []).map(row=>({
+          ...references.get(item.url),...row,url:item.url
+        })));
+      }
+      // Restoring data does not initiate a scan or restore failed requests.
+      state.checked=state.total=new Set((state.results || []).map(row=>row.url)).size;
+      state.failures=[];
+      state.running=false;
+    }
     return state;
   }).catch(() => state);
   function flush() {
@@ -22,7 +40,14 @@ globalThis.EbayDock = (() => {
     if (!Object.keys(dirty).length) return pending;
     const snapshot = dirty;
     dirty = {};
-    pending = pending.then(() => chrome.storage.session.set(snapshot)).catch(console.error);
+    pending = pending.then(async () => {
+      await chrome.storage.session.set(snapshot);
+      if(mode==='results') {
+        const {results=[],failures,...preferences}=state;
+        const listings=[...new Map(results.map(row=>[row.url,{url:row.url,title:row.title,image:row.image}])).values()];
+        await chrome.storage.local.set({[persistentKey]:{state:preferences,listings}});
+      }
+    }).catch(console.error);
     return pending;
   }
   function save(patch) {
@@ -43,6 +68,10 @@ globalThis.EbayDock = (() => {
     host.style.setProperty('right',side === 'right' ? '0' : 'auto','important');
     const openWidth = compact ? 'min(320px, 100vw)' : `min(100vw, max(280px, ${widthPercent}vw))`;
     host.style.setProperty('width', collapsed ? '44px' : openWidth, 'important');
+    // Overlay mode always protects the rail. Resize mode reserves the full
+    // actual dock width, including compact mode and the minimum open width.
+    document.documentElement.style.setProperty('--ebay-finder-inset',
+      resizeEbay && !collapsed ? openWidth : '44px');
     root.querySelector('.dock').style.flexDirection = side === 'right' ? 'row' : 'row-reverse';
     root.querySelector('.content').hidden = collapsed;
     const resize = root.querySelector('.resize');
@@ -54,28 +83,28 @@ globalThis.EbayDock = (() => {
     button.setAttribute('aria-label',`${collapsed ? 'Open' : 'Collapse'} eBay Filament finder`);
     button.textContent = `${collapsed ? 'Open' : 'Close'} · Filament finder ${side === 'right' ? (collapsed ? '‹' : '›') : (collapsed ? '›' : '‹')}`;
   }
-  function toggle() { collapsed = !collapsed; chrome.storage.local.set({[`finder:${mode}:collapsed`]:collapsed}).catch(console.error); update(); }
+  function toggle() { collapseTouched = true; collapsed = !collapsed; chrome.storage.local.set({[`finder:${mode}:collapsed`]:collapsed}).catch(console.error); update(); }
   function mount(element) {
     if (!host) {
-      // Keep a permanent rail-sized gutter so expanding only overlays the page.
+      // Reserve a permanent rail gutter, or the full dock in Resize eBay mode.
       // Fixed-position eBay dialogs need the same viewport inset: root margins
       // alone do not constrain their image-gallery close buttons.
       const pageStyle=document.createElement('style');pageStyle.id='ebay-finder-page-layout';
       pageStyle.textContent=`
         html[data-ebay-finder-side] {
           box-sizing:border-box!important;
-          width:calc(100% - 44px)!important;
+          width:calc(100% - var(--ebay-finder-inset, 44px))!important;
           min-width:0!important;
           margin-left:var(--ebay-finder-page-left)!important;
           margin-right:var(--ebay-finder-page-right)!important;
         }
-        html[data-ebay-finder-side="left"] { --ebay-finder-page-left:44px; --ebay-finder-page-right:0px; }
-        html[data-ebay-finder-side="right"] { --ebay-finder-page-left:0px; --ebay-finder-page-right:44px; }
+        html[data-ebay-finder-side="left"] { --ebay-finder-page-left:var(--ebay-finder-inset, 44px); --ebay-finder-page-right:0px; }
+        html[data-ebay-finder-side="right"] { --ebay-finder-page-left:0px; --ebay-finder-page-right:var(--ebay-finder-inset, 44px); }
         html[data-ebay-finder-side] .lightbox-dialog {
           left:var(--ebay-finder-page-left)!important;
           right:var(--ebay-finder-page-right)!important;
-          width:calc(100vw - 44px)!important;
-          max-width:calc(100vw - 44px)!important;
+          width:calc(100vw - var(--ebay-finder-inset, 44px))!important;
+          max-width:calc(100vw - var(--ebay-finder-inset, 44px))!important;
           box-sizing:border-box!important;
         }
         html[data-ebay-finder-side] .lightbox-dialog__window {
@@ -119,17 +148,20 @@ globalThis.EbayDock = (() => {
       });
       window.addEventListener('resize',update);
       root.addEventListener('keydown',event => { if(event.key === 'Escape' && !collapsed) { toggle(); root.querySelector('.rail').focus(); } });
-      chrome.storage.local.get(['finder:side','finder:width','finder:widthPercent',`finder:${mode}:collapsed`]).then(saved => {
+      chrome.storage.local.get(['finder:side','finder:width','finder:widthPercent','finder:resizeEbay',`finder:${mode}:collapsed`]).then(saved => {
+        if (!resizeTouched) resizeEbay = saved['finder:resizeEbay'] === true;
         side = saved['finder:side'] === 'left' ? 'left' : 'right';
         if(!widthTouched){
           const savedPercent=Number(saved['finder:widthPercent']);
           widthPercent=Number.isFinite(savedPercent)&&savedPercent>0?Math.min(100,savedPercent):
             Number.isFinite(saved['finder:width'])?Math.min(100,(saved['finder:width']+44)/innerWidth*100):25;
         }
-        collapsed = saved[`finder:${mode}:collapsed`] === true; update();
+        if (!collapseTouched && autoCollapsed === undefined) collapsed = saved[`finder:${mode}:collapsed`] === true;
+        update();
       });
       chrome.storage.onChanged.addListener((changes,area) => {
         if(area !== 'local') return;
+        if(changes['finder:resizeEbay']) { resizeTouched = true; resizeEbay = changes['finder:resizeEbay'].newValue === true; }
         if(changes['finder:side']) side = changes['finder:side'].newValue === 'left' ? 'left' : 'right';
         if(changes['finder:widthPercent']) { widthTouched=true; widthPercent=Math.max(1,Math.min(100,Number(changes['finder:widthPercent'].newValue)||25)); }
         update();
@@ -138,6 +170,17 @@ globalThis.EbayDock = (() => {
     root.querySelector('.content').replaceChildren(element); update();
   }
   return {ready,save,mount,
+    isCollapsed: () => collapsed,
+    setAutoCollapsed(value) {
+      const initial = autoCollapsed === undefined;
+      autoCollapsed = value;
+      // Later result pages can open a closed finder, but never close an open
+      // one. The caller only rechecks when the result titles/navigation change.
+      if ((initial && !collapseTouched) || (collapsed && !value)) {
+        collapsed = value;
+        update();
+      }
+    },
     setCompact(value) {
       if (compact === value) return;
       compact = value;

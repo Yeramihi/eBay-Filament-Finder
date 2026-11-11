@@ -1,0 +1,119 @@
+{
+  "capturedOn": "2026-11-09",
+  "searchURL": "https://www.ebay.co.uk/sch/i.html?_nkw=silk+tpu&_sacat=0&_from=R40&_pgn=3",
+  "listingURL": "https://www.ebay.co.uk/itm/396793856846?var=665258192398",
+  "captures": [
+    {
+      "mode": "search",
+      "key": "title",
+      "label": "Listing",
+      "ascending": true,
+      "filename": "search-title-asc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "title",
+      "label": "Listing",
+      "ascending": false,
+      "filename": "search-title-desc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "label",
+      "label": "Variant",
+      "ascending": true,
+      "filename": "search-label-asc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "label",
+      "label": "Variant",
+      "ascending": false,
+      "filename": "search-label-desc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "total",
+      "label": "Individual purchase",
+      "ascending": true,
+      "filename": "search-total-asc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "total",
+      "label": "Individual purchase",
+      "ascending": false,
+      "filename": "search-total-desc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "spool",
+      "label": "Bulk purchase*",
+      "ascending": true,
+      "filename": "search-spool-asc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "spool",
+      "label": "Bulk purchase*",
+      "ascending": false,
+      "filename": "search-spool-desc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "average",
+      "label": "Mixed bulk average",
+      "ascending": true,
+      "filename": "search-average-asc.jpg"
+    },
+    {
+      "mode": "search",
+      "key": "average",
+      "label": "Mixed bulk average",
+      "ascending": false,
+      "filename": "search-average-desc.jpg"
+    },
+    {
+      "mode": "listing",
+      "key": "label",
+      "label": "Variant",
+      "ascending": true,
+      "filename": "listing-label-asc.jpg"
+    },
+    {
+      "mode": "listing",
+      "key": "label",
+      "label": "Variant",
+      "ascending": false,
+      "filename": "listing-label-desc.jpg"
+    },
+    {
+      "mode": "listing",
+      "key": "total",
+      "label": "Individual purchase",
+      "ascending": true,
+      "filename": "listing-total-asc.jpg"
+    },
+    {
+      "mode": "listing",
+      "key": "total",
+      "label": "Individual purchase",
+      "ascending": false,
+      "filename": "listing-total-desc.jpg"
+    },
+    {
+      "mode": "listing",
+      "key": "spool",
+      "label": "Bulk purchase*",
+      "ascending": true,
+      "filename": "listing-spool-asc.jpg"
+    },
+    {
+      "mode": "listing",
+      "key": "spool",
+      "label": "Bulk purchase*",
+      "ascending": false,
+      "filename": "listing-spool-desc.jpg"
+    }
+  ]
+}
