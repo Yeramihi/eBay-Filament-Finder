@@ -206,7 +206,7 @@ globalThis.EbayCards = (() => {
     guide.className = 'finder-guide finder-button';
     guide.textContent = 'User guide';
     guide.addEventListener('click', () => {
-      chrome.runtime.sendMessage({type:'open-finder-guide'}).catch(console.error);
+      EbayRuntime.sendMessage({type:'open-finder-guide'}).catch(EbayRuntime.report);
     });
     toggleRow.append(settings, guide, toggle);
     toolbar.before(toggleRow);
@@ -234,9 +234,9 @@ globalThis.EbayCards = (() => {
         showDisplay(changes['finder:display'].newValue);
       }
     });
-    chrome.storage.local.get('finder:display').then(saved => {
+    EbayRuntime.local.get('finder:display').then(saved => {
       if (!displayChanged) showDisplay(saved['finder:display']);
-    }).catch(console.error);
+    }).catch(EbayRuntime.report);
     const sortMenu = document.createElement('details');
     sortMenu.className = 'finder-sort-menu';
     sortMenu.hidden = true;

@@ -6,10 +6,10 @@ const source = fs.readFileSync(`${__dirname}/../js/search.js`, 'utf8');
 const tick = () => new Promise(resolve => setTimeout(resolve, 15));
 function element() {
   return {hidden:false, open:true, value:'', disabled:false, textContent:'', style:{setProperty(){}},
-    classList:{toggle(){}}, handlers:{}, setAttribute(){}, append(){}, replaceChildren(){},
+    classList:{toggle(){},add(){},contains(){return false;}}, querySelector(){return element();},querySelectorAll(){return [];},remove(){},handlers:{}, setAttribute(){}, append(){}, replaceChildren(){},
     addEventListener(type, fn){this.handlers[type]=fn;}, closest(){return null;}};
 }
-function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,parallel=1,mode}={}) {
+function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,parallel=1,mode,realRuntime=false,allCache=false,invalidateCache=false}={}) {
   const nodes = new Map();
   const windowHandlers = {}, runtimeHandlers = [], pageChildren = [], requestMessages = [];
   const get = selector => {if (!nodes.has(selector)) nodes.set(selector, element()); return nodes.get(selector);};
@@ -19,17 +19,25 @@ function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,pa
   const buttons = [], calls = [], pending = [], collapsed = [], snapshots = [], controlMessages = [], polls = [];
   let candidates = [], hasFilament = false, observer;
   let pagination = {page:1,previous:null,next:null};
+  const cache=new Map();let activeURL;
   const context = {
-    console, URL, Intl, Map, Set, WeakMap, performance, setTimeout:(fn,ms)=>setTimeout(fn,fastRetries && ms===3000?0:ms), clearTimeout, setInterval(){},
-    location:{href:'https://www.ebay.co.uk/sch/i.html?_nkw=yellow+PLA+silk'},
+    console, URL, Intl, Map, Set, WeakMap, performance, setTimeout:(fn,ms)=>setTimeout(fn,fastRetries && ms===3000?0:ms), clearTimeout, setInterval(){},clearInterval(){},
+    location:{href:'https://www.ebay.co.uk/sch/i.html?_nkw=yellow+PLA+silk',origin:'https://www.ebay.co.uk'},
     window:{addEventListener:(type,fn)=>{(windowHandlers[type] ||= []).push(fn);}}, Node:{ELEMENT_NODE:1},
-    document:{documentElement:{append:element=>pageChildren.push(element)}, getElementById(){return null;}, createElement(tag){
+    document:{addEventListener(){},documentElement:{append:element=>pageChildren.push(element)}, getElementById(){return null;}, createElement(tag){
       const e=element(); e.attachShadow=()=>root;
       if(tag==='button')buttons.push(e); return e;
     }},
-    MutationObserver:class {constructor(fn){observer=fn;} observe(){}},
-    chrome:{runtime:{onMessage:{addListener:fn=>runtimeHandlers.push(fn)},getURL:x=>x,sendMessage:message=>{if(message.type==='scan-listing'){requestMessages.push(message);calls.push(message.url);return new Promise(resolve=>pending.push(resolve));}controlMessages.push(message);if(message.type==='visible-scan-poll')return new Promise(resolve=>polls.push(resolve));return Promise.resolve({cancelled:true});}},
-      storage:{local:{get:async()=>({parallelListings:parallel,'finder:visibleScan':visibleMode,'finder:scanMode':mode})}}},
+    MutationObserver:class {constructor(fn){observer=fn;} observe(){}disconnect(){}},
+    chrome:{runtime:{id:'test-extension',onMessage:{addListener:fn=>runtimeHandlers.push(fn)},getURL:x=>x,sendMessage:message=>{
+      if(message.type==='finder-cache-index') return invalidateCache ? Promise.reject(new Error('Extension context invalidated.')) : Promise.resolve({items:[]});
+      if(message.type==='finder-cache-read')return Promise.resolve({items:message.urls.map(url=>({url,rows:cache.get(url)}))});
+      if(message.type==='scan-listing'){activeURL=message.url;requestMessages.push(message);calls.push(message.url);return new Promise(resolve=>pending.push(response=>{if(response.rows)cache.set(message.url,response.rows);resolve(response);}));}
+      controlMessages.push(message);
+      if(message.type==='visible-scan-poll')return new Promise(resolve=>polls.push(response=>{if(response.rows)cache.set(activeURL,response.rows);resolve(response);}));
+      return Promise.resolve({cancelled:true});}},
+      storage:{onChanged:{addListener(){}},local:{get:async()=>({parallelListings:parallel,'finder:visibleScan':visibleMode,'finder:scanMode':mode,'finder:cache:showAll':allCache})}}},
+
     EbaySearchPagination:()=>pagination,
     EbaySearchListings:()=>candidates,
     EbaySearchResultsKey:()=>candidates.map(x=>x.url+':'+x.title).join('\n'),
@@ -41,8 +49,11 @@ function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,pa
       save:x=>snapshots.push(x),saveSort(){},onSortChange(){},getSort:async()=>null},
     EbayCards:{controls:()=>()=>{},tooltip(){},setFiltersExpanded:(r,v)=>{get('.finder-toolbar').hidden=!v;},
       showEntries(){},emptyState:()=>({}),entry:()=>({}),updateAverage(){}},
-    EbayVariants:{comparePrice:()=>0, terms:()=>[], matchingAverage:()=>null, matches:()=>true}
+    EbaySearchView:{yieldTurn:()=>Promise.resolve(),sort:async(rows,compare,current)=>current()?rows.sort(compare):null,create:()=>({set(){},dispose(){}})},
+    EbayVariants:{spoolEstimate:()=>({}),comparePrice:()=>0, terms:()=>[], matchingAverage:()=>null, matches:()=>true}
   };
+  if(realRuntime) vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/runtime.js`,'utf8'),context);
+  else context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   vm.runInNewContext(source,context);
   return {get, buttons,calls,pending,collapsed,snapshots,controlMessages,polls,windowHandlers,runtimeHandlers,pageChildren,requestMessages,
     setCandidates: x=>candidates=x,
@@ -111,6 +122,7 @@ test('dock keeps open across results and can open again when new filament appear
     }},
     chrome:{storage:{session:{get:async()=>({}),set:async()=>{}},local:{get:()=>new Promise(resolve=>restore=resolve),set:async()=>{}},onChanged:{addListener(){}}}}
   };
+  context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/dock.js`,'utf8'),context);
   const dock=context.EbayDock;
   dock.setAutoCollapsed(false);dock.mount(element());
@@ -153,6 +165,7 @@ test('Resize eBay reserves full open width, protects the rail when collapsed and
       const node=element();node.style={setProperty(){}};node.attachShadow=()=>root;return node;
     }},chrome:{storage:{session:{get:async()=>({}),set:async()=>{}},local:{get:()=>new Promise(resolve=>restore=resolve),set:async()=>{}},onChanged:{addListener:fn=>onChange=fn}}}
   };
+  context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/dock.js`,'utf8'),context);
   const dock=context.EbayDock;dock.mount(element());
   assert.equal(props.get('--ebay-finder-inset'),'44px');
@@ -235,17 +248,18 @@ test('visible job is polled while paused and retains its original candidate on c
   assert.deepEqual(h.calls,[listing(1).url,listing(1).url]);
 });
 
-// These cases are provided for the user to run; this build was not tested.
-test('mixed retries only the failed candidate in a visible tab, then uses background again',async()=>{
-  const h=harness({mode:'mixed',parallel:5});await tick();h.setCandidates([listing(1),listing(2)]);
+// Mixed mode drains in-flight background work before serial visible recovery.
+test('mixed drains parallel background jobs before visible recovery, then resumes background',async()=>{
+  const h=harness({mode:'mixed',parallel:2});await tick();h.setCandidates([listing(1),listing(2),listing(3)]);
   await h.buttons[0].handlers.click();await tick();
-  assert.equal(h.calls.length,1);assert.equal(h.requestMessages[0].visible,false);
+  assert.equal(h.calls.length,2);assert.equal(h.requestMessages[0].visible,false);
   h.pending.shift()({error:'eBay requires verification'});await tick();
-  assert.equal(h.calls.length,2);assert.equal(h.requestMessages[1].visible,true);
-  assert.equal(h.requestMessages[1].url,listing(1).url);
-  await h.complete();assert.equal(h.requestMessages[2].visible,false);
-  assert.equal(h.requestMessages[2].url,listing(2).url);await h.complete();
-  assert.equal(h.snapshots.filter(s=>s.results).at(-1).results.length,2);
+  assert.equal(h.calls.length,2,'visible fallback waits for the other background request');
+  await h.complete();assert.equal(h.calls.length,3);assert.equal(h.requestMessages[2].visible,true);
+  assert.equal(h.requestMessages[2].url,listing(1).url);
+  await h.complete();assert.equal(h.requestMessages[3].visible,false);
+  assert.equal(h.requestMessages[3].url,listing(3).url);await h.complete();
+  assert.equal(h.snapshots.filter(s=>s.results).at(-1).results.length,3);
 });
 test('Escape on the search page pauses scanning and retains queued candidates',async()=>{
   const h=harness({mode:'mixed'});await tick();h.setCandidates([listing(1),listing(2)]);
@@ -256,4 +270,14 @@ test('Escape on the search page pauses scanning and retains queued candidates',a
   assert.equal(h.calls.length,1);
   await h.buttons[0].handlers.click();await tick();await h.complete();await h.complete();
   assert.deepEqual(h.calls,[listing(1).url,listing(1).url,listing(2).url]);
+});
+
+test('a context invalidated during real cache-index loading cancels the search and disables stale controls',async()=>{
+  const h=harness({realRuntime:true,allCache:true,invalidateCache:true});
+  await tick();await tick();
+  assert.equal(h.buttons[0].disabled,true);
+  assert.equal(h.buttons[1].disabled,true);
+  assert.equal(h.calls.length,0);
+  await h.discover();
+  assert.equal(h.calls.length,0);
 });

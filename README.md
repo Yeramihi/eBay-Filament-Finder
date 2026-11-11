@@ -14,7 +14,7 @@ Changes include automatic sidebar opening from listing titles, search-derived fi
 
 A persistent listing cache loads matching saved results on search pages and skips valid entries during scans. Settings allow retention of 1 day, 1 week (default), 1 month (30 days), or indefinitely. Cached results show retrieval timestamps; opening a listing refreshes its saved data. Per-listing Clear cache and Refresh controls act on all variants of that listing. Hide from results hides an entire listing for 1 day, 1 week or 30 days (default), across searches and browser restarts. A collapsed Hidden section between Results and Out of stock shows one tile per hidden listing, its expiry and an Unhide button; hidden listings remain accessible there regardless of the current variant filter. Hiding is independent of cache age and never deletes listing data.
 
-The bundled guide has not yet been updated for scanning modes and persistent caching. Existing test files are included, but tests and browser checks have not been run for this prepared update at the user's request. This branch is for review and manual testing, not a published release.
+The bundled guide has not yet been updated for scanning modes and persistent caching. Automated regression tests and live Chrome reload/cache/filter/scroll checks have now been run following the user’s later authorization to test. This branch is for review and manual testing, not a published release.
 
 ## Install from source
 
@@ -47,3 +47,5 @@ Confirmed missing listing IDs are remembered indefinitely and skipped before bac
 Large caches load in small asynchronous listing batches, with progress in the sidebar. Filtering and sorting work on all in-memory rows and yield between short processing slices. The results, Hidden and Out of stock lists window their DOM to roughly two viewport heights; scrolling replaces off-screen tiles while spacers retain the complete scrollbar range. Closed sections defer tile creation. No new network requests or scans are needed to scroll or filter cached data.
 
 While scanning, progress shows “Scanning X of Y listings” for the current scan batch only, excluding preloaded cache entries. New candidates discovered during a scan extend that batch. Parallel scans show the earliest active queue position; retries and visible-tab fallback keep the same position. Subsequent batches and individual refreshes start their own counters.
+
+Content scripts stop obsolete cache requests, observers and timers after an extension reload or document teardown, with a reconnect message instead of uncaught context errors. Page session snapshots are read and written through the background worker, since Chrome restricts direct content-script access to session storage.

@@ -1,7 +1,7 @@
 (async () => {
   'use strict';
   let context;
-  try { context=await chrome.runtime.sendMessage({type:'visible-scan-context'}); } catch { return; }
+  try { context=await EbayRuntime.sendMessage({type:'visible-scan-context'}); } catch { return; }
   if (!context?.scan) return;
   const host=document.createElement('div');host.id='ebay-finder-scan-tab';
   const root=host.attachShadow({mode:'open'});
@@ -26,7 +26,7 @@
     return location.origin===url.origin && location.pathname.match(/^\/itm\/(?:[^/]+\/)?(\d+)(?:\/|$)/)?.[1]===url.pathname.split('/').pop();
   }
   async function report(message) {
-    return chrome.runtime.sendMessage({type:'visible-scan-report',jobId:context.jobId,...message});
+    return EbayRuntime.sendMessage({type:'visible-scan-report',jobId:context.jobId,...message});
   }
   async function pause(text) {
     show(text,true);await report({status:'paused',detail:text});lastReport=Date.now();
@@ -73,7 +73,7 @@
     if(ended||busy)return;
     retry.disabled=true;
     try {
-      const response=await chrome.runtime.sendMessage({type:'visible-scan-action',jobId:context.jobId,action:'retry'});
+      const response=await EbayRuntime.sendMessage({type:'visible-scan-action',jobId:context.jobId,action:'retry'});
       if(response?.error){show(response.error,true);return;}
       if(challenge()){await pause('Complete eBay’s verification first, then click Retry.');return;}
       let rows;try{rows=globalThis.EbayListingData?.();}catch{}
@@ -87,7 +87,7 @@
   async function action(value){
     if(ended || stopping)return;
     stopping = true;
-    try{await chrome.runtime.sendMessage({type:'visible-scan-action',jobId:context.jobId,action:value});}
+    try{await EbayRuntime.sendMessage({type:'visible-scan-action',jobId:context.jobId,action:value});}
     catch{stopping=false;show('Could not contact the extension. Return to the search page to stop the scan.',true);return;}
     ended=true;clearInterval(timer);show(value==='stop'?'Scan stopped. You can close this tab.':'Listing skipped.');retry.hidden=skip.hidden=true;stop.disabled=true;
   }
@@ -103,5 +103,6 @@
   });
   show(context.detail || 'Loading this listing…',context.status==='paused');
   const timer=setInterval(attempt,750);
+  EbayRuntime.onDispose(()=>{ended=true;clearInterval(timer);});
   attempt();
 })();

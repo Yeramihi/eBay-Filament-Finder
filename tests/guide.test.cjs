@@ -6,7 +6,7 @@ test('toolbar context menu and sidebar message both open the bundled guide',asyn
   let install,click,message;const menus=[],tabs=[];
   const event=()=>({addListener(){}});
   const chrome={runtime:{id:'test-extension',onMessage:{addListener:fn=>message=fn},onInstalled:{addListener:fn=>install=fn},getManifest:()=>({version:'1.4'}),getURL:p=>'chrome-extension://test-extension/'+p},
-    tabs:{create:async details=>tabs.push(details),onUpdated:event(),onRemoved:event()},windows:{onRemoved:event()},storage:{local:{get:async()=>({}),set:async()=>{}}},
+    tabs:{create:async details=>tabs.push(details),onUpdated:event(),onRemoved:event(),onActivated:event()},windows:{onRemoved:event()},storage:{local:{get:async()=>({}),set:async()=>{}}},
     contextMenus:{removeAll:async()=>{},create:(details,callback)=>{menus.push(details);callback();},onClicked:{addListener:fn=>click=fn}}};
   vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/background.js`,'utf8'),{chrome,importScripts(){},console,URL,Map,Date});
   install({reason:'install'});await new Promise(r=>setTimeout(r,0));

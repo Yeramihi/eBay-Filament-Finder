@@ -8,7 +8,7 @@ const parent={id:'extension',tab:{id:1,windowId:10},documentId:'search-document'
 function setup(){
   const data={},tabs=new Map([[1,{id:1,active:false,url:parent.url}]]),created=[],closed=[],messages=[],writes=[];
   let id=10;
-  const context={console,URL,Date,Promise,Number,crypto:{randomUUID:()=>`job-${++id}`},chrome:{runtime:{id:'extension'},storage:{session:{
+  const context={EbayListingCache:{put:async(url,rows)=>({rows}),markMissing:async()=>({removed:true,missing:true})},console,URL,Date,Promise,Number,crypto:{randomUUID:()=>`job-${++id}`},chrome:{runtime:{id:'extension'},storage:{session:{
     get:async key=>({[key]:structuredClone(data[key])}),
     set:async patch=>{writes.push(structuredClone(patch));Object.assign(data,structuredClone(patch));},remove:async key=>{delete data[key];}
   }},tabs:{

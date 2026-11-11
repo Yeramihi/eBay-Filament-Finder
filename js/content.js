@@ -3,7 +3,7 @@
 
   // The universal scan reader owns extension-created scan tabs. Do not mount
   // the normal listing dock or alter eBay's page width in those tabs.
-  try { if ((await chrome.runtime.sendMessage({type:'visible-scan-context'}))?.scan) return; }
+  try { if ((await EbayRuntime.sendMessage({type:'visible-scan-context'}))?.scan) return; }
   catch { /* Normal browsing remains available if the worker is unavailable. */ }
   const listingUrl = location.href;
   const pageOpenedAt=Number.isFinite(performance.timeOrigin) ? performance.timeOrigin : Date.now();
@@ -11,15 +11,15 @@
   async function removeMissingListing() {
     if(!EbayVariants.isMissingListing(document)) return false;
     listingMissing=true;
-    const response=await chrome.runtime.sendMessage({type:'finder-listing-missing'});
+    const response=await EbayRuntime.sendMessage({type:'finder-listing-missing'});
     if(!response?.removed) throw new Error(response?.error || 'Could not remove the missing listing from cache.');
     return true;
   }
-  try {if(await removeMissingListing()) return;} catch(error) {listingMissing=false;console.error(error);}
+  try {if(await removeMissingListing()) return;} catch(error) {listingMissing=false;EbayRuntime.report(error);}
   let comparisonBaseline;
   try {
     const id=location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
-    const response=id&&await chrome.runtime.sendMessage({type:'finder-cache-read',urls:[location.origin+'/itm/'+id]});
+    const response=id&&await EbayRuntime.sendMessage({type:'finder-cache-read',urls:[location.origin+'/itm/'+id]});
     if(response?.error) throw new Error(response.error);
     const cached=response?.items?.[0];
     comparisonBaseline={rows:cached?.rows || [],fetchedAt:cached?.rows?.[0]?.fetchedAt};
@@ -363,7 +363,7 @@
     candidate.attempts++;
     let saved=false;
     try {
-      const response=await chrome.runtime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows,baseline:comparisonBaseline,pageOpenedAt});
+      const response=await EbayRuntime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows,baseline:comparisonBaseline,pageOpenedAt});
       // Always compare with the cache captured when this document opened, not
       // with an intermediate write caused by eBay's own page hydration.
       reportedPriceChanges.clear();
@@ -410,4 +410,5 @@
     if(++hydrationReads>=15) clearInterval(hydrationTimer);
   },1000);
   window.addEventListener('pagehide',()=>clearInterval(hydrationTimer),{once:true});
+  EbayRuntime.onDispose(()=>{listingMissing=true;clearInterval(hydrationTimer);clearTimeout(scheduled);clearTimeout(cacheSaveTimer);observer.disconnect();});
 })();

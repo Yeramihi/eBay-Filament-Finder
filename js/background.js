@@ -3,6 +3,23 @@ importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
 let hiddenChanges=Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (['finder-page-session-get','finder-page-session-set'].includes(message?.type) && sender.id === chrome.runtime.id) {
+    (async()=>{
+      const source=new URL(sender.url);
+      if(!/^https:\/\/(?:www\.)?ebay\.(?:co\.uk|com)$/.test(source.origin)) throw new Error('Unsupported snapshot source.');
+      const keys=message.type==='finder-page-session-get' ? [].concat(message.keys || []) : Object.keys(message.patch || {});
+      if(!keys.length || keys.some(key=>{
+        if(typeof key!=='string'||!key.startsWith('finder-page:')) return true;
+        try {
+          const page=new URL(key.slice('finder-page:'.length).replace(/:(?:rows|failures)$/,''));
+          return page.origin!==source.origin || !/^\/(?:sch\/|itm\/(?:[^/]+\/)?\d+)/.test(page.pathname);
+        } catch {return true;}
+      })) throw new Error('Unsupported snapshot keys.');
+      if(message.type==='finder-page-session-get') return {data:await chrome.storage.session.get(keys)};
+      await chrome.storage.session.set(message.patch);return {saved:true};
+    })().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
   if (message?.type === 'finder-missing-clear' && sender.id === chrome.runtime.id) {
     EbayListingCache.forgetMissing().then(respond,error=>respond({error:error.message}));
     return true;

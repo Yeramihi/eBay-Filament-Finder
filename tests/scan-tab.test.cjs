@@ -20,6 +20,7 @@ function setup({title='Filament listing',rows=[{label:'PLA',inStock:true}]}={}){
       return {status:message.status||'loading'};
     }}}
   };
+  context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   const ready=vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/scan-tab.js`,'utf8'),context);
   return {ready,get,messages,document,windowHandlers,setRows:r=>rows=r,get reads(){return reads;},get reloads(){return reloads;},advance:async ms=>{clock+=ms;await interval();await tick();}};
 }
@@ -45,6 +46,7 @@ test('unreadable listing times out to Retry/Skip/Stop, then user Retry can reloa
 });
 test('normal listing sidebar exits before mounting anything in a managed scan tab',async()=>{
   const context={chrome:{runtime:{sendMessage:async()=>({scan:true})}}};
+  context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   await vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/content.js`,'utf8'),context);
   // No document API exists in this test: reaching any mounting code fails.
 });

@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  if (document.getElementById('ebay-filament-finder')) return;
+  if (!EbayRuntime.active() || document.getElementById('ebay-filament-finder')) return;
   const host = document.createElement('div');
   host.id = 'ebay-filament-finder';
   host.style.cssText = 'width:100%';
@@ -128,11 +128,11 @@
   let scanStarted = false, scanParallel = EbaySettings.defaultParallel;
   let showAllCache=false, scopeRefreshPending=false;
   const pageListings=new Set(), rememberedMissing=new Set();
-  const cachePreferencesReady=chrome.storage.local.get('finder:cache:showAll').then(saved=>{showAllCache=saved['finder:cache:showAll']===true;});
+  const cachePreferencesReady=EbayRuntime.local.get('finder:cache:showAll').then(saved=>{showAllCache=saved['finder:cache:showAll']===true;});
   const hiddenKey='finder:hiddenListings';
   let hiddenListings={}, hiddenTimer;
   const hiddenPending=new Set();
-  const hiddenReady=chrome.storage.local.get(hiddenKey).then(saved=>{hiddenListings=saved[hiddenKey] || {};}).catch(()=>{});
+  const hiddenReady=EbayRuntime.local.get(hiddenKey).then(saved=>{hiddenListings=saved[hiddenKey] || {};}).catch(()=>{});
   const hiddenUntil=url=>Number.isFinite(hiddenListings[url]?.expiresAt)&&hiddenListings[url].expiresAt>Date.now() ? hiddenListings[url].expiresAt : 0;
   const queue = [], seen = new Set();
   const collator = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
@@ -173,9 +173,10 @@
       EbayCards.updateAverage(entry,row.hiddenPreview||row.outOfStock ? null : context.averages.get(row.url),price,context.sortKey);
       for(const field of entry.querySelectorAll('[data-sort-field]')) field.classList.toggle('sort-active',field.dataset.sortField===context.sortKey||field.dataset.sortAlias===context.sortKey);
     });
-  let renderGeneration = 0;
+  let renderGeneration = 0, disposed=false;
   let cacheRevision=0, cacheSyncTimer, cacheSyncBusy=false, cacheSyncAgain=false;
   async function render() {
+    if(disposed||!EbayRuntime.active()) return;
     const generation = ++renderGeneration;
     // Let the browser paint typed text before filtering and building rows.
     await new Promise(resolve => setTimeout(resolve,0));
@@ -285,7 +286,7 @@
   }
   let restored = false;
   function persist() {
-    if (restored) EbayDock.save({query:appliedQuery,listingQuery:appliedListingQuery,combine:appliedCombine,appliedQuery,appliedListingQuery,appliedCombine,checked,total,running,stopped,
+    if (restored&&!disposed&&EbayRuntime.active()) EbayDock.save({query:appliedQuery,listingQuery:appliedListingQuery,combine:appliedCombine,appliedQuery,appliedListingQuery,appliedCombine,checked,total,running,stopped,
       discoveryVersion:2,allCacheView:showAllCache,pageListingUrls:[...pageListings],resultsOpen:root.querySelector('.results').open});
   }
   const stateReady = Promise.all([EbayDock.ready,hiddenReady,cachePreferencesReady]).then(async ([saved]) => {
@@ -318,7 +319,7 @@
       const current=await listings();for(const listing of current) pageListings.add(listing.url);
       const restoredListings=(saved.restoreListings || []).filter(listing=>showAllCache||pageListings.has(listing.url));
       await loadCached([...restoredListings,...current],showAllCache,false);
-    } catch(error) {console.error(error);scanNotice.textContent='Could not load cached results. Reopen this page to retry.';scanNotice.hidden=false;}
+    } catch(error) {if(!EbayRuntime.expected(error)) {EbayRuntime.report(error);scanNotice.textContent='Could not load cached results. Reopen this page to retry.';scanNotice.hidden=false;}}
     showFailures(); render();
   });
   // An explicitly opened listing replaces its entire saved variant set.
@@ -344,13 +345,14 @@
     }
   });
   function scheduleCacheSync() {
+    if(disposed||!EbayRuntime.active()) return;
     if(running || listingActions.size) return;
     clearTimeout(cacheSyncTimer);
-    cacheSyncTimer=setTimeout(()=>refreshFromCache().catch(console.error),100);
+    cacheSyncTimer=setTimeout(()=>refreshFromCache().catch(EbayRuntime.report),100);
   }
   async function refreshFromCache() {
     await stateReady;
-    if(running || listingActions.size) return;
+    if(disposed||!EbayRuntime.active()||running || listingActions.size) return;
     if(cacheSyncBusy) {cacheSyncAgain=true;return;}
     cacheSyncBusy=true;
     const revision=cacheRevision;
@@ -362,7 +364,7 @@
       }
       const [response,saved]=await Promise.all([
         readCacheBatches([...references.keys()],showAllCache),
-        chrome.storage.local.get(hiddenKey)
+        EbayRuntime.local.get(hiddenKey)
       ]);
       // A tab can become active while Scan is starting, or a cache write can
       // race this read. Never apply a snapshot over newer work or a cache clear.
@@ -413,20 +415,23 @@
   window.addEventListener('pageshow',event=>{if(event.persisted) scheduleCacheSync();});
   root.querySelector('.results').addEventListener('toggle',persist);
   async function readCacheBatches(urls,all,onBatch) {
+    EbayRuntime.assertActive();
     cacheLoading++;
     if(!running) status.textContent='Loading cached listings…';
     try {
       let references=urls.map(url=>({url})),items=[];
       if(all) {
-        const index=await chrome.runtime.sendMessage({type:'finder-cache-index'});
+        const index=await EbayRuntime.sendMessage({type:'finder-cache-index'});
         if(!Array.isArray(index?.items)) throw new Error(index?.error || 'Could not read cached listings.');
         references=index.items;
       }
       for(let offset=0;offset<references.length;offset+=12) {
+        EbayRuntime.assertActive();
         const batch=references.slice(offset,offset+12),metadata=new Map(batch.map(item=>[item.url,item]));
-        const response=await chrome.runtime.sendMessage({type:'finder-cache-read',urls:batch.map(item=>item.url)});
+        const response=await EbayRuntime.sendMessage({type:'finder-cache-read',urls:batch.map(item=>item.url)});
         if(!Array.isArray(response?.items)) throw new Error(response?.error || 'Could not read cached listings.');
         const chunk=response.items.map(item=>({...metadata.get(item.url),...item}));
+        EbayRuntime.assertActive();
         if(onBatch) await onBatch(chunk);else items.push(...chunk);
         if(!running) status.textContent=`Loading cached listings… ${Math.min(offset+batch.length,references.length)}/${references.length}`;
         await EbaySearchView.yieldTurn();
@@ -458,7 +463,7 @@
     render();
   }
   async function configureScan() {
-    const settings=await chrome.storage.local.get(['parallelListings','finder:visibleScan','finder:scanMode']).catch(()=>({}));
+    const settings=await EbayRuntime.local.get(['parallelListings','finder:visibleScan','finder:scanMode']).catch(()=>({}));
     scanMode=['background','visible','mixed'].includes(settings['finder:scanMode']) ? settings['finder:scanMode'] : settings['finder:visibleScan']===true ? 'visible' : 'background';
     const parallel=settings.parallelListings;
     scanParallel=Number.isInteger(parallel)&&parallel>=1&&parallel<=999 ? parallel : EbaySettings.defaultParallel;
@@ -470,7 +475,7 @@
     const hide=hiddenUntil(listing.url)===0;
     hiddenPending.add(listing.url);render();
     try {
-      const response=await chrome.runtime.sendMessage({type:'finder-hidden-set',url:listing.url,title:listing.title,days:hide ? days : 0});
+      const response=await EbayRuntime.sendMessage({type:'finder-hidden-set',url:listing.url,title:listing.title,days:hide ? days : 0});
       if(response?.error || !response?.hidden) throw new Error(response?.error || 'Could not save hidden listings.');
       hiddenListings=response.hidden;
     } catch(error) {
@@ -482,7 +487,7 @@
     cacheRevision++;
     listingActions.add(listing.url);render();
     try {
-      const response=await chrome.runtime.sendMessage({type:'finder-cache-delete',url:listing.url});
+      const response=await EbayRuntime.sendMessage({type:'finder-cache-delete',url:listing.url});
       if(!response?.removed) throw new Error(response?.error || 'Could not clear this listing.');
       results=results.filter(row=>row.url!==listing.url);
       if(seen.delete(listing.url)) {checked=Math.max(0,checked-1);total=Math.max(checked,total-1);}
@@ -528,7 +533,7 @@
     await stateReady;
     if(results.length) {
       const urls=[...new Set(results.map(row=>row.url))];
-      const response=await chrome.runtime.sendMessage({type:'finder-cache-read',urls});
+      const response=await EbayRuntime.sendMessage({type:'finder-cache-read',urls});
       const valid=new Set((response?.items || []).filter(item=>item.rows?.length).map(item=>item.url));
       for(const url of urls) if(!valid.has(url)) {seen.delete(url);checked=Math.max(0,checked-1);total=Math.max(checked,total-1);}
       results=results.filter(row=>valid.has(row.url));
@@ -579,14 +584,14 @@
     async function request(listing, visible=scanMode==='visible') {
       registerScanCandidate(listing);scanBatch.active.add(listing.url);updateScanProgress();
       try {
-        let response = await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url,title:listing.title,image:listing.image,visible,
+        let response = await EbayRuntime.sendMessage({type:'scan-listing',url:listing.url,title:listing.title,image:listing.image,visible,
           returnToSource:visible && scanMode==='mixed',
           progress:currentScanProgress(listing),forceRefresh:listing.forceRefresh===true});
         if (response?.pending) {
           visibleJob = response.jobId;
           while (response?.pending) {
-            if (stopped) await chrome.runtime.sendMessage({type:'visible-scan-cancel'});
-            response = await chrome.runtime.sendMessage({type:'visible-scan-poll',jobId:visibleJob});
+            if (stopped) await EbayRuntime.sendMessage({type:'visible-scan-cancel'});
+            response = await EbayRuntime.sendMessage({type:'visible-scan-poll',jobId:visibleJob});
             if (response?.pending) {
               scanNotice.textContent = response.detail || 'Scanning the visible listing tab…';
               scanNotice.hidden = false;
@@ -601,6 +606,7 @@
       catch (error) { return {error:error.message}; }
     }
     function accept(listing,response) {
+      if(disposed) return false;
       if(response?.removed) {
         finishScanCandidate(listing);
         if(response.missing) rememberedMissing.add(listing.url);
@@ -687,6 +693,7 @@
         // Recovery finished: the next worker group uses the chosen parallelism.
       }
     } finally {
+      if(disposed) return;
       if(fallbacks.length) queue.unshift(...fallbacks);
       running = false;
       scanBatch=undefined;
@@ -698,7 +705,7 @@
       // Close the reusable scan tab only when the complete accumulated queue
       // is drained. Cancelled scans retain it so a manual Resume can reuse it.
       if (!onlyURL && !stopped && queue.length) processQueue();
-      else if (!stopped && scanMode !== 'background') chrome.runtime.sendMessage({type:'visible-scan-finish'}).catch(() => {});
+      else if (!stopped && scanMode !== 'background') EbayRuntime.sendMessage({type:'visible-scan-finish'}).catch(() => {});
     }
   }
 
@@ -726,6 +733,7 @@
     if (!stopped && !userPaused) processQueue();
   }
   function scheduleDiscovery() {
+    if(disposed||!EbayRuntime.active()) return;
     clearTimeout(discoveryTimer);
     discoveryTimer = setTimeout(discover,250);
   }
@@ -748,7 +756,8 @@
   // pushState/replaceState in the page's world cannot be intercepted reliably
   // from an isolated content script. Check the URL without patching eBay code.
   let lastURL = location.href;
-  setInterval(() => {
+  const navigationTimer=setInterval(() => {
+    if(!EbayRuntime.active()) return;
     if (location.href !== lastURL) { lastURL = location.href; scheduleDiscovery(); }
   },750);
   function showScanNotice(message) {
@@ -758,12 +767,12 @@
     scanNotice.hidden = false;
     render();
   }
-  scan.addEventListener('click',start);
+  scan.addEventListener('click',()=>start().catch(EbayRuntime.report));
   function stopScan() {
     if (!running) return;
     userPaused=true; stopped=true; stop.disabled=true;
     updateScanBanner();
-    if (scanMode !== 'background') chrome.runtime.sendMessage({type:'visible-scan-cancel'}).catch(() => {});
+    if (scanMode !== 'background') EbayRuntime.sendMessage({type:'visible-scan-cancel'}).catch(() => {});
   }
   stop.addEventListener('click',stopScan);
   // Capture Escape before the dock's ordinary Escape-to-collapse handler.
@@ -778,7 +787,7 @@
         running && (!visibleJob || visibleJob === message.jobId)) stopScan();
   });
   window.addEventListener('pagehide',()=>{
-    if (scanMode !== 'background' && (running || visibleJob)) chrome.runtime.sendMessage({type:'visible-scan-cancel'}).catch(() => {});
+    if (scanMode !== 'background' && (running || visibleJob)) EbayRuntime.sendMessage({type:'visible-scan-cancel'}).catch(() => {});
   });
   function applyFilters() {
     appliedQuery = input.value;
@@ -801,7 +810,14 @@
     sortTouched = true;
     applySavedSort(saved);
   });
+  EbayRuntime.onDispose(()=>{
+    disposed=true;stopped=true;renderGeneration++;
+    clearInterval(navigationTimer);clearTimeout(discoveryTimer);clearTimeout(cacheSyncTimer);clearTimeout(hiddenTimer);
+    observer.disconnect();virtualView.dispose();
+    scanBanner.remove();scan.disabled=true;stop.disabled=true;
+    status.textContent='Extension updated. Reload this eBay page to reconnect.';
+  });
   EbayDock.getSort().then(saved => {
     if (!sortTouched) applySavedSort(saved);
-  });
+  }).catch(EbayRuntime.report);
 })();

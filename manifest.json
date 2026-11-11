@@ -10,6 +10,7 @@
         "https://*.ebay.com/*"
       ],
       "js": [
+        "js/runtime.js",
         "js/scan-tab.js"
       ],
       "run_at": "document_start"

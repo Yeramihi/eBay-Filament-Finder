@@ -9,8 +9,8 @@ globalThis.EbayDock = (() => {
   let timer, dirty = {}, pending = Promise.resolve();
   const persistentKey = `finder:saved-page:${location.href}`;
   const ready = Promise.all([
-    chrome.storage.session.get([stateKey,rowsKey,failuresKey]),
-    mode === 'results' ? chrome.storage.local.get(persistentKey) : Promise.resolve({})
+    EbayRuntime.session.get([stateKey,rowsKey,failuresKey]),
+    mode === 'results' ? EbayRuntime.local.get(persistentKey) : Promise.resolve({})
   ]).then(async ([saved,persistent]) => {
     const sessionState=saved[stateKey];
     state=sessionState || persistent[persistentKey]?.state || {};
@@ -33,22 +33,24 @@ globalThis.EbayDock = (() => {
     return state;
   }).catch(() => state);
   function flush() {
+    if(!EbayRuntime.active()) return pending;
     clearTimeout(timer);
     timer = undefined;
     if (!Object.keys(dirty).length) return pending;
     const snapshot = dirty;
     dirty = {};
     pending = pending.then(async () => {
-      await chrome.storage.session.set(snapshot);
+      await EbayRuntime.session.set(snapshot);
       if(mode==='results') {
         const {results=[],failures,restoreListings,...preferences}=state;
         const listings=[...new Map(results.map(row=>[row.url,{url:row.url,title:row.title,image:row.image}])).values()];
-        await chrome.storage.local.set({[persistentKey]:{state:preferences,listings}});
+        await EbayRuntime.local.set({[persistentKey]:{state:preferences,listings}});
       }
-    }).catch(console.error);
+    }).catch(EbayRuntime.report);
     return pending;
   }
   function save(patch) {
+    if(!EbayRuntime.active()) return;
     Object.assign(state,patch);
     // Input changes must never serialize the full scan on every keystroke.
     if ('results' in patch) dirty[rowsKey] = mode==='results' ? [...new Map(patch.results.map(row=>[row.url,{url:row.url,title:row.title,image:row.image}])).values()] : patch.results;
@@ -59,6 +61,7 @@ globalThis.EbayDock = (() => {
     timer = setTimeout(flush,250);
   }
   window.addEventListener('pagehide',flush);
+  EbayRuntime.onDispose(()=>{clearTimeout(timer);dirty={};});
   function update() {
     if (!host) return;
     document.documentElement.setAttribute('data-ebay-finder-side',side);
@@ -81,7 +84,7 @@ globalThis.EbayDock = (() => {
     button.setAttribute('aria-label',`${collapsed ? 'Open' : 'Collapse'} eBay Filament finder`);
     button.textContent = `${collapsed ? 'Open' : 'Close'} · Filament finder ${side === 'right' ? (collapsed ? '‹' : '›') : (collapsed ? '›' : '‹')}`;
   }
-  function toggle() { collapseTouched = true; collapsed = !collapsed; chrome.storage.local.set({[`finder:${mode}:collapsed`]:collapsed}).catch(console.error); update(); }
+  function toggle() { collapseTouched = true; collapsed = !collapsed; EbayRuntime.local.set({[`finder:${mode}:collapsed`]:collapsed}).catch(EbayRuntime.report); update(); }
   function mount(element) {
     if (!host) {
       // Reserve a permanent rail gutter, or the full dock in Resize eBay mode.
@@ -124,7 +127,7 @@ globalThis.EbayDock = (() => {
         widthPercent=Math.min(100,Math.max(Math.min(280,innerWidth)/innerWidth*100,value));
         update();
       }
-      function persistWidth(){chrome.storage.local.set({'finder:widthPercent':widthPercent}).catch(console.error);}
+      function persistWidth(){EbayRuntime.local.set({'finder:widthPercent':widthPercent}).catch(EbayRuntime.report);}
       resize.addEventListener('pointerdown',event=>{
         if(event.button!==0)return;
         event.preventDefault();pointer=event.pointerId;resize.setPointerCapture(pointer);
@@ -146,7 +149,7 @@ globalThis.EbayDock = (() => {
       });
       window.addEventListener('resize',update);
       root.addEventListener('keydown',event => { if(event.key === 'Escape' && !collapsed) { toggle(); root.querySelector('.rail').focus(); } });
-      chrome.storage.local.get(['finder:side','finder:width','finder:widthPercent','finder:resizeEbay',`finder:${mode}:collapsed`]).then(saved => {
+      EbayRuntime.local.get(['finder:side','finder:width','finder:widthPercent','finder:resizeEbay',`finder:${mode}:collapsed`]).then(saved => {
         if (!resizeTouched) resizeEbay = saved['finder:resizeEbay'] === true;
         side = saved['finder:side'] === 'left' ? 'left' : 'right';
         if(!widthTouched){
@@ -190,7 +193,7 @@ globalThis.EbayDock = (() => {
         if (area === 'local' && change) callback(change.newValue);
       });
     },
-    async getSort(){return (await chrome.storage.local.get(`finder:${mode}:sort`))[`finder:${mode}:sort`];},
-    saveSort(key,ascending){chrome.storage.local.set({[`finder:${mode}:sort`]:{key,ascending}}).catch(console.error);}
+    async getSort(){return (await EbayRuntime.local.get(`finder:${mode}:sort`))[`finder:${mode}:sort`];},
+    saveSort(key,ascending){EbayRuntime.local.set({[`finder:${mode}:sort`]:{key,ascending}}).catch(EbayRuntime.report);}
   };
 })();

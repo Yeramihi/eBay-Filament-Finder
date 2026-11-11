@@ -17,8 +17,8 @@ globalThis.EbaySearchView = (()=>{
     return current() ? source : null;
   }
   function create(viewport,makeEntry,updateEntry) {
-    const views=new Map();let frame,width=viewport.clientWidth;
-    function schedule() {if(!frame) frame=requestAnimationFrame(()=>{frame=undefined;paint();});}
+    const views=new Map();let disposed=false,frame,width=viewport.clientWidth;
+    function schedule() {if(!disposed&&!frame) frame=requestAnimationFrame(()=>{frame=undefined;paint();});}
     function prefix(view) {
       view.offsets=new Float64Array(view.rows.length+1);
       for(let index=0;index<view.rows.length;index++) view.offsets[index+1]=view.offsets[index]+(view.heights.get(view.rows[index]) || view.estimate);
@@ -92,6 +92,7 @@ globalThis.EbaySearchView = (()=>{
         view={container,section:container.closest('details'),top,bottom,rows:[],nodes:new Map(),heights:new WeakMap(),estimate:240,estimated:false};
         views.set(container,view);view.section.addEventListener('toggle',schedule);
         const layout=new MutationObserver(()=>{view.heights=new WeakMap();view.estimated=false;view.estimate=container.classList.contains('lines')?28:240;prefix(view);view.dirty=true;schedule();});
+        view.layoutObserver=layout;
         layout.observe(container,{attributes:true,attributeFilter:['class']});
       }
       view.rows=rows;view.context=context;view.dirty=true;prefix(view);
@@ -99,7 +100,7 @@ globalThis.EbaySearchView = (()=>{
       else if(!container.contains(view.top)) {view.top.style.height='0px';view.bottom.style.height=`${view.offsets.at(-1)}px`;container.replaceChildren(view.top,view.bottom);}
       schedule();
     }
-    return {set,schedule};
+    return {set,schedule,dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();viewport.removeEventListener('scroll',schedule);for(const view of views.values()) {view.layoutObserver?.disconnect();view.nodes.clear();}views.clear();}};
   }
   return {create,sort,yieldTurn};
 })();

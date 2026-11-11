@@ -80,7 +80,7 @@ globalThis.EbaySettings = (() => {
       if(storageReading) {storageAgain=true;return;}
       storageReading=true;
       try {
-        const bytes=await chrome.storage.local.getBytesInUse(null);
+        const bytes=await EbayRuntime.local.getBytesInUse(null);
         if(disposed) return;
         const units=['bytes','KB','MB','GB','TB'];let amount=bytes,index=0;
         while(amount>=1000&&index<units.length-1) {amount/=1000;index++;}
@@ -101,7 +101,7 @@ globalThis.EbaySettings = (() => {
       storageStatus.classList.remove('error');storageStatus.textContent='Purging cache…';
       try {
         await pendingSave;
-        const response=await chrome.runtime.sendMessage({type:'finder-cache-purge'});
+        const response=await EbayRuntime.sendMessage({type:'finder-cache-purge'});
         if(!response?.purged) throw new Error(response?.error || 'Could not purge the cache. Try again.');
         storageStatus.textContent='Cache purged. Preferences and hidden-list choices kept.';
       } catch(error) {storageStatus.textContent=error.message;storageStatus.classList.add('error');}
@@ -111,7 +111,7 @@ globalThis.EbaySettings = (() => {
       clearMissing.disabled=true;
       storageStatus.classList.remove('error');storageStatus.textContent='Clearing remembered missing listings…';
       try {
-        const response=await chrome.runtime.sendMessage({type:'finder-missing-clear'});
+        const response=await EbayRuntime.sendMessage({type:'finder-missing-clear'});
         if(!response?.cleared) throw new Error(response?.error || 'Could not clear missing listings. Try again.');
         storageStatus.textContent=`Cleared ${response.count} remembered missing listings. Future scans can try those IDs again.`;
       } catch(error) {storageStatus.textContent=error.message;storageStatus.classList.add('error');}
@@ -172,7 +172,7 @@ globalThis.EbaySettings = (() => {
     function save(patch) {
       pendingSave = pendingSave.then(async () => {
         try {
-          await chrome.storage.local.set(patch);
+          await EbayRuntime.local.set(patch);
           showStatus('Saved automatically.');
           return true;
         } catch {
@@ -248,7 +248,7 @@ globalThis.EbaySettings = (() => {
     };
     chrome.storage.onChanged.addListener(onChange);
 
-    chrome.storage.local.get([
+    EbayRuntime.local.get([
       'finder:side', 'finder:widthPercent', 'finder:width', 'finder:display', 'finder:resizeEbay', 'parallelListings', 'finder:visibleScan', 'finder:scanMode', 'finder:cache:maxAge', 'finder:cache:showAll'
     ]).then(saved => {
       allCached.checked=saved['finder:cache:showAll']===true;
@@ -330,7 +330,7 @@ globalThis.EbaySettings = (() => {
     window.addEventListener('resize', place);
 
     try {
-      const assets = await chrome.runtime.sendMessage({type:'get-finder-settings-view'});
+      const assets = await EbayRuntime.sendMessage({type:'get-finder-settings-view'});
       if (!dialog.open) return;
       if (!assets?.html || !assets?.css) throw new Error('Settings view unavailable.');
       // These assets come from the extension package, never from the page.
