@@ -31,3 +31,5 @@ The normal listing sidebar confirms cache saves with the saved timestamp, retrie
 The extension requests `unlimitedStorage` so its persistent listing cache can exceed Chrome’s normal local-storage quota. Existing stored data needs no migration. Retention settings and per-listing cache deletion still apply; this does not remove disk-space limits.
 
 Settings shows live local-storage usage and a Purge all cache button. Purging removes persistent listing data and local/session scan snapshots, preserving preferences and hidden-list choices. Active scans and opened listings may save fresh data after a purge.
+
+Price parsing supports single-item multi-buy groups alongside variant-specific tiers, plus percentage and fixed-currency vouchers. Fixed vouchers are applied once to an order subtotal after multi-buy pricing, capped at that subtotal, before postage. Coupon codes and amounts appear in price explanations; eligibility and combining offers still require checking at checkout.

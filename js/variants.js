@@ -234,14 +234,25 @@ globalThis.EbayVariants = (() => {
   }
   function applicableCoupon(row) {
     const coupon = row.coupon;
-    return coupon && Number.isFinite(coupon.percent) && coupon.percent > 0 && coupon.percent < 100 ? coupon : null;
+    if(!coupon) return null;
+    if(Number.isFinite(coupon.percent) && coupon.percent>0 && coupon.percent<100) return coupon;
+    if(Number.isFinite(coupon.amount) && coupon.amount>0 && coupon.currency===row.currency) return coupon;
+    return null;
+  }
+  function couponLabel(coupon) {
+    return Number.isFinite(coupon.percent) ? `${coupon.percent}%` : formatCurrency(coupon.amount,coupon.currency);
+  }
+  function couponSaving(coupon,subtotal) {
+    if(!coupon || !Number.isFinite(subtotal) || subtotal<=0) return 0;
+    // A fixed-value voucher is deducted once per order, never once per unit.
+    return Math.min(subtotal,Number.isFinite(coupon.percent) ? subtotal*coupon.percent/100 : coupon.amount);
   }
   function totalEstimate(row) {
     const coupon = applicableCoupon(row);
     const hasItem = typeof row.amount === 'number' && Number.isFinite(row.amount);
     const hasPostage = typeof row.postage === 'number' && Number.isFinite(row.postage);
     if (!coupon || !hasItem) return {amount:row.total,coupon:null};
-    const saving = row.amount * coupon.percent / 100;
+    const saving = couponSaving(coupon,row.amount);
     return {amount:Math.round((row.amount - saving + (hasPostage ? row.postage : 0)) * 100) / 100,
       saving,coupon,shippingUnknown:!hasPostage};
   }
@@ -277,7 +288,7 @@ globalThis.EbayVariants = (() => {
     }
     const estimate = totalEstimate(row);
     if (estimate.coupon) {
-      return `Experimental coupon estimate — check the coupon details on the listing page for limits, minimum spend, expiry and eligibility. Enter the code at checkout and verify manually.\nItem before coupon: ${item}\nCoupon −${estimate.coupon.percent}%: −${money(estimate.saving,row.currency)}\nPostage (not discounted): ${postage}\nIndividual purchase after coupon: ${money(estimate.amount,row.currency,row.totalApproximate || row.approximate)}${estimate.shippingUnknown ? '\n⚠ Postage is unknown and is not included.' : ''}`;
+      return `Experimental coupon estimate — check the coupon details on the listing page for limits, minimum spend, expiry and eligibility. Enter the code at checkout and verify manually.\nItem before coupon: ${item}\nCoupon −${couponLabel(estimate.coupon)}${estimate.coupon.code ? ` (code ${estimate.coupon.code})` : ''}: −${money(estimate.saving,row.currency)}\nPostage (not discounted): ${postage}\nIndividual purchase after coupon: ${money(estimate.amount,row.currency,row.totalApproximate || row.approximate)}${estimate.shippingUnknown ? '\n⚠ Postage is unknown and is not included.' : ''}`;
     }
     if (typeof row.total !== 'number' && typeof row.amount === 'number') {
       return `Item: ${item}\nPostage: ${postage}\n⚠ Item price only. Postage price is not recognised; delivery is not included.`;
@@ -322,13 +333,19 @@ globalThis.EbayVariants = (() => {
       }
     }
     if (texts.length !== 1) return null;
-    const text = texts[0].replace(/&pound;|&#163;|&#xA3;/gi,'£').replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();
-    const matches = [...text.matchAll(/\b(\d+(?:\.\d+)?)\s*%\s+off\s+with\s+code\b/gi)];
-    if (matches.length !== 1) return null;
-    const percent = Number(matches[0][1]);
-    if (!(percent > 0 && percent < 100)) return null;
-    return {percent};
+    const text = texts[0].replace(/&pound;|&#163;|&#xA3;/gi,'£').replace(/&euro;|&#8364;|&#x20AC;/gi,'€').replace(/&dollar;|&#36;|&#x24;/gi,'$').replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();
+    const percentMatches=[...text.matchAll(/\b(\d+(?:\.\d+)?)\s*%\s+off\s+with\s+code\b(?:\s+([A-Z0-9_-]+))?/gi)];
+    const amountMatches=[...text.matchAll(/(GBP|US\s*\$|USD|EUR|£|€|\$)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)\s+off\s+with\s+code\s+([A-Z0-9_-]+)/gi)];
+    if(percentMatches.length+amountMatches.length!==1) return null;
+    if(percentMatches.length) {
+      const percent=Number(percentMatches[0][1]);
+      return percent>0&&percent<100 ? {percent,...(percentMatches[0][2] ? {code:percentMatches[0][2]} : {})} : null;
+    }
+    const match=amountMatches[0], amount=Number(match[2].replace(/,/g,''));
+    const currency=/£|GBP/i.test(match[1]) ? 'GBP' : /€|EUR/i.test(match[1]) ? 'EUR' : 'USD';
+    return amount>0&&Number.isFinite(amount) ? {amount,currency,code:match[3]} : null;
   }
+
   function withVolumePricing(rows,scripts) {
     let model = null;
     for (const script of scripts) {
@@ -338,7 +355,7 @@ globalThis.EbayVariants = (() => {
     if (!model) return rows;
     return rows.map(row => {
       // Never borrow another variant's tiers or the currently selected variant's price.
-      const group = model.mskuVariationMap?.[row.id] || (row.singleItem ? model.mskuDefaultGroup : null);
+      const group = model.mskuVariationMap?.[row.id] || (row.singleItem ? model.mskuDefaultGroup || model.group : null);
       const tiers = (group?.entries || []).map(entry => {
         const data = entry.paramValue;
         return {quantity:data?.quantitySelected,amount:data?.binModel?.price?.value?.value,
@@ -395,7 +412,7 @@ globalThis.EbayVariants = (() => {
       ? Math.round((recognised ? (() => {
         const spools = offer?.spools || 1;
         const subtotal = (offer?.unitPrice ?? base * (offer?.factor ?? 1)) * spools;
-        const saving = coupon ? subtotal * coupon.percent / 100 : 0;
+        const saving = couponSaving(coupon,subtotal);
         return (subtotal - saving + (hasPostage ? row.postage : 0)) / spools;
       })() : base) * 100) / 100 : undefined;
     const estimate = {amount, recognised, offer, coupon,shippingUnknown:recognised ? !hasPostage : !hasTotal};
@@ -406,7 +423,7 @@ globalThis.EbayVariants = (() => {
     const calculation = estimate.offer
       ? `${estimate.offer.description}: ${estimate.offer.formula}. Requires purchase of ${estimate.offer.spools} ${estimate.offer.identical ? 'identical items (same variant; variants cannot be mixed)' : 'items from this listing'}. Assumes all items have this price.`
       : 'No unambiguous supported offer recognised; showing the regular total, including recognised postage.';
-    const couponNote = estimate.coupon ? `\nIncludes eBay coupon: ${estimate.coupon.percent}% off the item subtotal after multi-buy discounts, before postage. Check the coupon details on the listing page for maximum savings, minimum spend, expiry, eligibility and whether offers combine. Enter the code at checkout and verify manually.` : '';
+    const couponNote = estimate.coupon ? `\nIncludes eBay coupon: ${couponLabel(estimate.coupon)} off the item subtotal after multi-buy discounts, before postage.${Number.isFinite(estimate.coupon.amount) ? ' The fixed voucher is deducted once from the order total, not from every item.' : ''}${estimate.coupon.code ? ` Code: ${estimate.coupon.code}.` : ''} Check the coupon details on the listing page for maximum savings, minimum spend, expiry, eligibility and whether offers combine. Enter the code at checkout and verify manually.` : '';
     return `Experimental estimate — check the offer, required quantity, eligibility, spool size and delivery manually before buying.\n${estimate.coupon && !estimate.offer ? 'One item at the regular price before coupon.' : calculation}${couponNote}\nRecognised postage is added once after discounts, then divided across the offer quantity. Delivery charges for a multi-item order may differ.`;
   }
 
@@ -419,7 +436,7 @@ globalThis.EbayVariants = (() => {
     const estimate = spoolEstimate(row);
     const labels = [];
     if (estimate.offer) labels.push(`Requires ${estimate.offer.spools} ${estimate.offer.identical ? 'identical items' : 'items from this listing'}`);
-    if (estimate.coupon) labels.push(`Coupon −${estimate.coupon.percent}%`);
+    if (estimate.coupon) labels.push(`Coupon −${couponLabel(estimate.coupon)}`);
     return labels.join(' · ');
   }
   function displaySpool(row, format) {
@@ -453,11 +470,12 @@ globalThis.EbayVariants = (() => {
     const compatible = offer && estimates.every(({estimate:e}) => e.offer &&
       e.offer.spools === offer.spools && e.offer.identical === offer.identical &&
       e.offer.description === offer.description && e.coupon?.percent === first.coupon?.percent &&
+      e.coupon?.amount === first.coupon?.amount && e.coupon?.currency === first.coupon?.currency && e.coupon?.code === first.coupon?.code &&
       Number.isFinite(e.amount));
     const priced = compatible ? estimates.map(({row,estimate}) => {
       const quantity = offer.spools;
       const subtotal = (estimate.offer.unitPrice ?? row.amount * estimate.offer.factor) * quantity;
-      const total = Math.round((subtotal * (1 - (estimate.coupon?.percent || 0) / 100) +
+      const total = Math.round((subtotal - couponSaving(estimate.coupon,subtotal) +
         (Number.isFinite(row.postage) ? row.postage : 0)) * 100) / 100;
       return {total,unit:total / quantity};
     }) : [];
@@ -509,5 +527,5 @@ globalThis.EbayVariants = (() => {
     const text = label.toLocaleLowerCase();
     return words.every(word => text.includes(word));
   }
-  return { matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, terms, matches };
+  return { couponLabel, matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, terms, matches };
 })();

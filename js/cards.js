@@ -162,7 +162,7 @@ globalThis.EbayCards = (() => {
         add('p',`Cheapest selection: ${money(offer.cheapest.total)} total · ${money(offer.cheapest.unit)}/item`);
         add('p',`Most expensive selection: ${money(offer.expensive.total)} total · ${money(offer.expensive.unit)}/item`);
         add('p',`Each extreme assumes ${offer.quantity} of the same matching variant.${offer.identical?' Offer requires identical items; variants cannot be mixed.':''}`);
-        if(offer.coupon)add('p',`Includes recognised ${offer.coupon.percent}% coupon; check eligibility and limits.`);
+        if(offer.coupon)add('p',`Includes recognised ${EbayVariants.couponLabel(offer.coupon)} coupon${offer.coupon.code ? ` (code ${offer.coupon.code})` : ''}; ${Number.isFinite(offer.coupon.amount) ? 'the fixed voucher applies once per order. ' : ''}Check eligibility, limits and whether offers combine.`);
         add('p',offer.shippingUnknown?'Postage is unknown for some variants and is excluded where unknown.':'Recognised postage is added once per selection; actual delivery charges may differ.');
       }else add('p','No consistent quantity offer recognised across these variants. Showing the mean item price before offers, coupons and postage.');
       if(average.offer)add('p',`Before offers: ${money(average.baseAmount)}/item, excluding coupons and postage.`);
@@ -296,7 +296,7 @@ globalThis.EbayCards = (() => {
     if(search||row.singleItem)field('Listing',row.title||row.label);
     if(!row.singleItem)field('Variant',row.label);
     field('Individual purchase',EbayVariants.displayTotal(row,format),EbayVariants.priceTooltip(row));
-    const coupon=EbayVariants.totalEstimate(row).coupon;if(coupon)field('Coupon',`−${coupon.percent}%`,EbayVariants.priceTooltip(row));
+    const coupon=EbayVariants.totalEstimate(row).coupon;if(coupon)field('Coupon',`−${EbayVariants.couponLabel(coupon)}`,EbayVariants.priceTooltip(row));
     field('Bulk purchase*',EbayVariants.displaySpool(row,format),EbayVariants.spoolTooltip(row,EbayVariants.spoolEstimate(row)),true);
     field('Offer',EbayVariants.spoolLabel(row),EbayVariants.spoolTooltip(row,EbayVariants.spoolEstimate(row)));
     if(row.cached && Number.isFinite(row.fetchedAt)) {
