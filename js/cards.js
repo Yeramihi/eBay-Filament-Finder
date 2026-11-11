@@ -31,7 +31,11 @@ globalThis.EbayCards = (() => {
     .finder-tooltip strong{display:block;color:#17365d}.finder-tooltip p{margin:7px 0}.finder-tooltip strong:not(:first-child){margin-top:12px;padding-top:9px;border-top:1px solid #d7e1ed}
     .listing-content{display:block;color:inherit!important;text-decoration:none!important}
     .listing-content:focus-visible{outline:3px solid #2563eb}
-    .listing-cache-actions{display:flex;gap:5px;clear:both;margin-top:6px}
+    .listing-cache-actions{display:flex;flex-wrap:wrap;align-items:center;gap:5px;clear:both;margin-top:6px}
+    .finder-hidden{padding:8px 9px}.finder-hidden summary{cursor:pointer;font-weight:600}
+    .hidden-help{font:11px/1.4 system-ui;color:#64748b;margin:6px 0}
+    .hidden-until{display:block;font:11px/1.4 system-ui;color:#64748b;white-space:normal}
+    .hide-duration{font:11px/1.4 system-ui;max-width:85px;padding:2px;border:1px solid #aab7c7;border-radius:4px;background:#fff;color:#17365d}
     .listing-cache-actions[hidden]{display:none!important}
     .listing-cache-actions button{font:11px/1.4 system-ui;padding:2px 6px;border:1px solid #aab7c7;border-radius:4px;background:#f4f7fb;color:#17365d;cursor:pointer}
     .listing-cache-actions button:disabled{opacity:.5;cursor:default}
@@ -216,7 +220,7 @@ globalThis.EbayCards = (() => {
     root.querySelector('.finder-results').append(unavailable);
 
     function showDisplay(value) {
-      for (const list of [entries, unavailableEntries]) {
+      for (const list of [entries, unavailableEntries,...root.querySelectorAll('.finder-hidden .finder-entries')]) {
         list.classList.toggle('lines', value === 'lines');
       }
     }
@@ -265,7 +269,19 @@ globalThis.EbayCards = (() => {
       for(const field of root.querySelectorAll('.finder-entry [data-sort-field]'))field.classList.toggle('sort-active',field.dataset.sortField===key || field.dataset.sortAlias===key);
     };
   }
-  function entry(row,format,{search=false,url,select,clearCache,refresh}={}){
+  function entry(row,format,{search=false,url,select,clearCache,refresh,hideListing}={}){
+    if(row.hiddenPreview && hideListing) {
+      const item=document.createElement('article');item.className='finder-entry';
+      const link=document.createElement('a');link.className='listing-content';link.href=row.url;
+      link.target='_blank';link.rel='noopener noreferrer';link.textContent=row.title;
+      const actions=document.createElement('span');actions.className='listing-cache-actions';
+      const button=document.createElement('button');button.type='button';button.dataset.action='visibility';button.dataset.listingTitle=row.title;
+      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();hideListing(0);});
+      actions.append(button);
+      const note=document.createElement('small');note.className='hidden-until';
+      item.append(link,actions,note);
+      return item;
+    }
     const clickable=search || (!row.singleItem&&!row.outOfStock);
     const item=document.createElement(clickable?'a':'article');item.className='finder-entry';
     if(row.outOfStock)item.classList.add('out-of-stock');
@@ -303,7 +319,7 @@ globalThis.EbayCards = (() => {
     }
     tooltip(compact,fields.join('\n'));
     item.append(compact);
-    if(search && (clearCache || refresh)) {
+    if(search && (clearCache || refresh || hideListing)) {
       // Keep buttons outside the listing link for valid keyboard and click behavior.
       const wrapper=document.createElement('article');wrapper.className=item.className;
       item.className='listing-content';
@@ -319,17 +335,45 @@ globalThis.EbayCards = (() => {
         button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();handler();});
         actions.append(button);
       }
-      wrapper.append(item,actions);
+      if(hideListing) {
+        const duration=document.createElement('select');duration.className='hide-duration';
+        duration.setAttribute('aria-label',`Hide duration: ${row.title||'listing'}`);
+        for(const [days,label] of [[1,'1 day'],[7,'1 week'],[30,'1 month']]) duration.append(new Option(label,String(days)));
+        duration.value='30';
+        const button=document.createElement('button');button.type='button';button.dataset.action='visibility';
+        button.dataset.listingTitle=row.title||'listing';
+        button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();hideListing(Number(duration.value));});
+        actions.append(button,duration);
+      }
+      const until=document.createElement('small');until.className='hidden-until';until.hidden=true;
+      wrapper.append(item,actions,until);
       return wrapper;
     }
     return item;
   }
-  function showEntries(root, entries, outOfStock) {
+  function updateHidden(entry,expiresAt) {
+    const button=entry.querySelector('[data-action="visibility"]');
+    if(!button) return;
+    const label=expiresAt ? 'Unhide' : 'Hide from results';
+    button.textContent=label;button.setAttribute('aria-label',`${label}: ${button.dataset.listingTitle}`);
+    button.title=expiresAt ? 'Restore all variants of this listing to results.' : 'Hide every variant of this listing for the selected duration (1 month = 30 days).';
+    const duration=entry.querySelector('.hide-duration');
+    if(duration) duration.hidden=!!expiresAt;
+    const note=entry.querySelector('.hidden-until');
+    if(note) {note.hidden=!expiresAt;note.textContent=expiresAt ? `Hidden until ${new Date(expiresAt).toLocaleString()}` : '';}
+  }
+  function showEntries(root, entries, outOfStock, hiddenEntries=[]) {
     activeTooltip?.();
     const sortMenu = root.querySelector('.finder-sort-menu');
-    sortMenu.hidden = outOfStock.length === 0 && !entries.some(entry => entry.classList.contains('finder-entry'));
+    sortMenu.hidden = hiddenEntries.length === 0 && outOfStock.length === 0 && !entries.some(entry => entry.classList.contains('finder-entry'));
     if (sortMenu.hidden) sortMenu.open = false;
     root.querySelector('.finder-entries').replaceChildren(...entries);
+    const hidden=root.querySelector('.finder-hidden');
+    if(hidden) {
+      hidden.hidden=hiddenEntries.length===0;
+      hidden.querySelector('summary').textContent=`Hidden (${hiddenEntries.length} listings)`;
+      hidden.querySelector('.finder-entries').replaceChildren(...hiddenEntries);
+    }
     const section = root.querySelector('.finder-out-of-stock');
     section.hidden = outOfStock.length === 0;
     section.querySelector('summary').textContent = `Out of stock variants (${outOfStock.length})`;
@@ -341,5 +385,5 @@ globalThis.EbayCards = (() => {
     root.querySelector('.finder-toggle').setAttribute('aria-expanded', String(expanded));
   }
 
-  return {emptyState, controls, entry, showEntries, setFiltersExpanded, tooltip, updateAverage};
+  return {emptyState, controls, entry, updateHidden, showEntries, setFiltersExpanded, tooltip, updateAverage};
 })();

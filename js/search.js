@@ -50,6 +50,7 @@
       <div class="finder-results">
         <p class="scan-notice" role="status" hidden></p>
         <details class="results" open><summary>Results</summary><div class="finder-entries"></div></details>
+        <details class="finder-hidden" hidden><summary>Hidden</summary><p class="hidden-help">Whole listings hidden from results, including their out-of-stock variants. Unhide at any time; they return automatically when the selected period ends.</p><div class="finder-entries"></div></details>
         <details class="failures" hidden><summary></summary><ul></ul></details>
       </div>
     </section>`;
@@ -104,6 +105,11 @@
   let sortTouched = false;
   let userPaused = false, scanMode = 'background', visibleJob;
   let scanStarted = false, scanParallel = EbaySettings.defaultParallel;
+  const hiddenKey='finder:hiddenListings';
+  let hiddenListings={}, hiddenTimer;
+  const hiddenPending=new Set();
+  const hiddenReady=chrome.storage.local.get(hiddenKey).then(saved=>{hiddenListings=saved[hiddenKey] || {};}).catch(()=>{});
+  const hiddenUntil=url=>Number.isFinite(hiddenListings[url]?.expiresAt)&&hiddenListings[url].expiresAt>Date.now() ? hiddenListings[url].expiresAt : 0;
   const queue = [], seen = new Set();
   const collator = new Intl.Collator(undefined, { numeric:true, sensitivity:'base' });
 
@@ -136,9 +142,19 @@
     // Let the browser paint typed text before filtering and building rows.
     await new Promise(resolve => setTimeout(resolve,0));
     if (generation !== renderGeneration) return;
+    clearTimeout(hiddenTimer);
+    const expiry=Object.values(hiddenListings).map(entry=>entry?.expiresAt).filter(time=>Number.isFinite(time)&&time>Date.now());
+    if(expiry.length) hiddenTimer=setTimeout(render,Math.min(2147483647,Math.max(1,Math.min(...expiry)-Date.now()+1)));
     const words = EbayVariants.terms(appliedQuery);
     const listingWords = EbayVariants.terms(appliedListingQuery);
-    const visible = results.filter(row => {
+    const present=new Set(results.map(row=>row.url));
+    // Keep hiding controls available after the separate data cache expires or
+    // when a different search does not include this listing. Never retain old
+    // prices just to display the hidden-list management entry.
+    const hiddenPreviews=Object.entries(hiddenListings).filter(([url])=>hiddenUntil(url) && url.startsWith(location.origin+'/itm/') && !present.has(url)).map(([url,record])=>({url,title:record.title || 'Hidden listing',hiddenPreview:true}));
+    const visible = [...results,...hiddenPreviews].filter(row => {
+      // Hidden listings stay available for management even after filters change.
+      if(hiddenUntil(row.url)) return true;
       const checks = [];
       if (words.length) checks.push(EbayVariants.matches(row.label, words));
       if (listingWords.length) checks.push(EbayVariants.matches(row.title || '', listingWords));
@@ -173,30 +189,36 @@
     });
     const entries = [];
     const outOfStock = [];
+    const hiddenEntries=[];
     const averageUpdates = [];
     const actionRows=new Map();
     for(const row of visible) if(!actionRows.has(row.url) || (actionRows.get(row.url).outOfStock&&!row.outOfStock)) actionRows.set(row.url,row);
     let batchStarted = performance.now();
     for (const row of visible) {
       if(performance.now()-batchStarted>8){await new Promise(resolve=>setTimeout(resolve,0));if(generation!==renderGeneration)return;batchStarted=performance.now();}
+      const until=hiddenUntil(row.url);
+      if(until && actionRows.get(row.url)!==row) continue;
       let entry=rowElements.get(row);
-      if(!entry){entry=EbayCards.entry(row,price,{search:true,clearCache:()=>clearListing(row),refresh:()=>refreshListing(row)});rowElements.set(row,entry);}
+      if(!entry){entry=EbayCards.entry(row,price,{search:true,clearCache:()=>clearListing(row),refresh:()=>refreshListing(row),hideListing:days=>toggleHidden(row,days)});rowElements.set(row,entry);}
       const actions=entry.querySelector('.listing-cache-actions');
       if(actions) {
         actions.hidden=actionRows.get(row.url)!==row;
-        for(const button of actions.querySelectorAll('button')) button.disabled=running || listingActions.size>0;
+        for(const button of actions.querySelectorAll('button')) button.disabled=button.dataset.action==='visibility' ? hiddenPending.has(row.url) : running || listingActions.size>0;
+        const duration=actions.querySelector('.hide-duration');
+        if(duration) duration.disabled=hiddenPending.has(row.url);
       }
-      averageUpdates.push([entry,row.outOfStock ? null : averages.get(row.url)]);
-      (row.outOfStock ? outOfStock : entries).push(entry);
+      EbayCards.updateHidden(entry,until);
+      averageUpdates.push([entry,row.hiddenPreview || row.outOfStock ? null : averages.get(row.url)]);
+      (until ? hiddenEntries : row.outOfStock ? outOfStock : entries).push(entry);
     }
-    const showResults = running || results.length > 0;
+    const showResults = running || results.length > 0 || hiddenEntries.length>0;
     if(!entries.length && showResults) entries.push(EbayCards.emptyState({scanning:running,outOfStock:outOfStock.length>0}));
     if(generation!==renderGeneration)return;
     updateCompactWidth();
     resultsSection.hidden = !showResults;
     // Commit average fields and their sort styling together, after all yielding work.
     for (const [entry,average] of averageUpdates) EbayCards.updateAverage(entry,average,price,sortKey);
-    EbayCards.showEntries(root, entries, outOfStock);
+    EbayCards.showEntries(root, entries, outOfStock, hiddenEntries);
     syncSort(sortKey,ascending);
     persist();
     const failureCount = failures.length ? ` · ${failures.length} couldn't be checked` : '';
@@ -230,7 +252,7 @@
     if (restored) EbayDock.save({query:appliedQuery,listingQuery:appliedListingQuery,combine:appliedCombine,appliedQuery,appliedListingQuery,appliedCombine,checked,total,running,stopped,
       discoveryVersion:2,resultsOpen:root.querySelector('.results').open});
   }
-  const stateReady = EbayDock.ready.then(async saved => {
+  const stateReady = Promise.all([EbayDock.ready,hiddenReady]).then(async ([saved]) => {
     input.value = saved.query || '';
     listingInput.value = saved.listingQuery || '';
     appliedQuery = saved.appliedQuery ?? input.value;
@@ -256,7 +278,9 @@
   // An explicitly opened listing replaces its entire saved variant set.
   // Expired data is also removed from the current results and deduplication set.
   chrome.storage.onChanged.addListener((changes,area)=>{
-    if(area!=='local' || !restored) return;
+    if(area!=='local') return;
+    if(changes[hiddenKey]) {hiddenListings=changes[hiddenKey].newValue || {};render();}
+    if(!restored) return;
     const urls=Object.keys(changes).filter(key=>key.startsWith('finder:cache:item:')).map(key=>key.slice('finder:cache:item:'.length)).filter(url=>results.some(row=>row.url===url));
     if(!urls.length) return;
     chrome.runtime.sendMessage({type:'finder-cache-read',urls}).then(response=>{
@@ -293,6 +317,18 @@
     if(scanMode==='visible') scanParallel=1;
   }
   const listingActions=new Set();
+  async function toggleHidden(listing,days) {
+    if(hiddenPending.has(listing.url)) return;
+    const hide=hiddenUntil(listing.url)===0;
+    hiddenPending.add(listing.url);render();
+    try {
+      const response=await chrome.runtime.sendMessage({type:'finder-hidden-set',url:listing.url,title:listing.title,days:hide ? days : 0});
+      if(response?.error || !response?.hidden) throw new Error(response?.error || 'Could not save hidden listings.');
+      hiddenListings=response.hidden;
+    } catch(error) {
+      scanNotice.textContent=error.message;scanNotice.hidden=false;
+    } finally {hiddenPending.delete(listing.url);render();}
+  }
   async function clearListing(listing) {
     if(running || listingActions.size) return;
     listingActions.add(listing.url);render();

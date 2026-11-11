@@ -1,8 +1,26 @@
 importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
 
-
+let hiddenChanges=Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'finder-hidden-set' && sender.id === chrome.runtime.id) {
+    const task=hiddenChanges.then(async()=>{
+      const url=EbayListingCache.canonical(message.url);
+      const source=new URL(sender.url);
+      if(source.origin!==new URL(url).origin || !source.pathname.startsWith('/sch/')) throw new Error('Unsupported listing URL.');
+      if(![0,1,7,30].includes(message.days)) throw new Error('Choose 1 day, 1 week or 1 month.');
+      const key='finder:hiddenListings';
+      const saved=await chrome.storage.local.get(key);
+      const hidden=Object.fromEntries(Object.entries(saved[key] || {}).filter(([,entry])=>Number.isFinite(entry?.expiresAt)&&entry.expiresAt>Date.now()));
+      if(message.days===0) delete hidden[url];
+      else hidden[url]={expiresAt:Date.now()+message.days*86400000,title:String(message.title || 'Hidden listing').slice(0,1000)};
+      await chrome.storage.local.set({[key]:hidden});
+      return {hidden};
+    });
+    hiddenChanges=task.catch(()=>{});
+    task.then(respond,error=>respond({error:error.message}));
+    return true;
+  }
   if (message?.type === 'finder-cache-read' && sender.id === chrome.runtime.id) {
     Promise.all((message.urls || []).map(async url => {
       try {return {url,...await EbayListingCache.get(url)};} catch {return {url};}
