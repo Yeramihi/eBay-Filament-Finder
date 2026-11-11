@@ -136,10 +136,12 @@
           <button class="apply-filters finder-button" type="button">Apply filters</button>
           <div class="status" role="status" aria-live="polite"></div>
         </div>
-        <div class="finder-results"><div class="cache-status status" role="status" aria-live="polite"><span></span> <button type="button" class="cache-retry" hidden>Retry cache save</button></div><div class="finder-entries"></div></div>
+        <div class="finder-results"><div class="price-change-status status error" role="alert" hidden></div><div class="cache-status status" role="status" aria-live="polite"><span></span> <button type="button" class="cache-retry" hidden>Retry cache save</button></div><div class="finder-entries"></div></div>
       </section>
     `;
 
+    const priceStatus=root.querySelector('.price-change-status');
+    updatePriceNotice=message=>{priceStatus.textContent=message;priceStatus.hidden=!message;};
     const cacheStatus=root.querySelector('.cache-status');
     const cacheRetry=root.querySelector('.cache-retry');
     updateCacheNotice=(message,error=false)=>{
@@ -259,7 +261,53 @@
 
   const readListing = () => EbayListingData();
   let updateRows, scheduled, savedSignature, cacheCandidate, cacheSaveTimer, cacheSaving=false;
-  let updateCacheNotice=()=>{};
+  let updateCacheNotice=()=>{}, updatePriceNotice=()=>{};
+  let openedVariantId=new URL(listingUrl).searchParams.get('var');
+  const reportedPriceChanges=new Map();
+  let priceWarning, closedPriceWarning='';
+  function money(value,currency) {
+    if(!Number.isFinite(value)) return 'unknown';
+    try{return EbayVariants.formatCurrency(value,currency);}catch{return `${value.toFixed(2)} ${currency || ''}`;}
+  }
+  function priceChangeText(change) {
+    const parts=[];
+    for(const [field,label] of [['item','Item price'],['postage','Postage'],['individual','Individual purchase'],['bulk','Bulk purchase']]) {
+      const before=change.before[field], after=change.after[field];
+      if(Number.isFinite(before)&&Number.isFinite(after)&&(Math.round(before*100)!==Math.round(after*100)||change.before.currency!==change.after.currency)) {
+        parts.push(`${label}: ${money(before,change.before.currency)} → ${money(after,change.after.currency)}`);
+      }
+    }
+    return parts.join('; ');
+  }
+  function updatePriceWarnings(rows) {
+    if(!reportedPriceChanges.size) {updatePriceNotice('');priceWarning?.host.remove();priceWarning=undefined;return;}
+    if(!openedVariantId && !rows.some(row=>row.singleItem)) {
+      const controls=[...document.querySelectorAll('.x-sku button[aria-haspopup="listbox"]')];
+      const selected=controls.length&&rows.find(row=>row.values?.length===controls.length && row.values.every((value,index)=>normalise(value)===normalise(controls[index].value)));
+      if(selected?.id!=null) openedVariantId=String(selected.id);
+    }
+    const openedKey=rows.some(row=>row.singleItem) ? 'single' : openedVariantId ? 'variant:'+openedVariantId : null;
+    const change=openedKey&&reportedPriceChanges.get(openedKey);
+    const others=[...reportedPriceChanges.values()].filter(item=>item.id!==openedKey);
+    updatePriceNotice(others.length ? `Price changes detected for ${others.length} ${openedKey ? 'other ' : ''}variant${others.length===1?'':'s'} since the saved scan. ${others.slice(0,3).map(item=>`${item.label}: ${priceChangeText(item)}`).join(' | ')}${others.length>3?' | More variants also changed.':''}` : '');
+    if(!change) return;
+    const signature=JSON.stringify(change);
+    if(signature===closedPriceWarning || priceWarning?.signature===signature) return;
+    priceWarning?.host.remove();
+    const host=document.createElement('div');host.id='ebay-finder-price-warning';
+    host.style.cssText='all:initial!important;position:fixed!important;top:12px!important;left:56px!important;right:56px!important;z-index:2147483647!important;';
+    const shadow=host.attachShadow({mode:'closed'});
+    const style=document.createElement('style');style.textContent='section{display:flex;align-items:start;gap:12px;max-width:920px;margin:auto;padding:14px 16px;border:2px solid #b4232c;border-radius:10px;background:#fff1f0;color:#8a1720;box-shadow:0 4px 18px #0003;font:14px/1.5 system-ui}strong{display:block}button{flex:none;margin-left:auto;padding:5px 10px;border:1px solid #b4232c;border-radius:5px;background:white;color:#8a1720;font:13px system-ui;cursor:pointer}';
+    const section=document.createElement('section');section.setAttribute('role','alert');
+    const text=document.createElement('div'), heading=document.createElement('strong'), detail=document.createElement('span');
+    heading.textContent='Price changed since the saved scan';
+    detail.textContent=`${change.label}: ${priceChangeText(change)}. Review the current listing before purchasing.`;
+    text.append(heading,detail);
+    const close=document.createElement('button');close.type='button';close.textContent='Close';close.setAttribute('aria-label','Dismiss price change warning');
+    close.addEventListener('click',()=>{closedPriceWarning=signature;host.remove();priceWarning=undefined;});
+    section.append(text,close);shadow.append(style,section);document.documentElement.append(host);
+    priceWarning={host,signature};
+  }
   function queueCacheSave(rows) {
     if(!rows.length) return;
     const signature=JSON.stringify(rows);
@@ -281,6 +329,13 @@
     let saved=false;
     try {
       const response=await chrome.runtime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows});
+      for(const change of response?.priceChanges || []) {
+        const previous=reportedPriceChanges.get(change.id);
+        const combined=previous ? {...change,before:previous.before,previousFetchedAt:previous.previousFetchedAt} : change;
+        if(priceChangeText(combined)) reportedPriceChanges.set(change.id,combined);
+        else reportedPriceChanges.delete(change.id);
+      }
+      updatePriceWarnings(candidate.rows);
       if(response?.saved!==true || !Number.isFinite(response.fetchedAt)) throw new Error(response?.error || 'The extension did not confirm the cache update. Reload this listing if the extension was updated.');
       savedSignature=candidate.signature;
       saved=true;
@@ -299,6 +354,7 @@
     const rows=readListing();
     if(updateRows) updateRows(rows);
     else if(rows.length) updateRows=mount(rows);
+    updatePriceWarnings(rows);
     queueCacheSave(rows);
   }
   refresh();

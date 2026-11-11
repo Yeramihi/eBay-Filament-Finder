@@ -25,10 +25,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     task.then(respond,error=>respond({error:error.message}));
     return true;
   }
+  if (message?.type === 'finder-cache-read-all' && sender.id === chrome.runtime.id) {
+    (async()=>({items:await EbayListingCache.getAll(new URL(sender.url).origin)}))()
+      .then(respond,error=>respond({error:error.message}));
+    return true;
+  }
   if (message?.type === 'finder-cache-read' && sender.id === chrome.runtime.id) {
-    Promise.all((message.urls || []).map(async url => {
-      try {return {url,...await EbayListingCache.get(url)};} catch {return {url};}
-    })).then(items=>respond({items}),()=>respond({items:[]}));
+    EbayListingCache.getMany(message.urls || []).then(items=>respond({items}),error=>respond({error:error.message}));
     return true;
   }
   if (message?.type === 'finder-cache-delete' && sender.id === chrome.runtime.id) {
@@ -48,8 +51,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       }
       // An explicitly opened listing is fresh even if eBay omits stock for a
       // variant. Preserve that unknown status rather than retaining old data.
-      const result=await EbayListingCache.put(url,message.rows);
-      return result.persisted ? {saved:true,fetchedAt:result.fetchedAt} : {saved:false,error:result.cacheError};
+      const result=await EbayListingCache.refreshFromPage(url,message.rows);
+      return result.persisted ? {saved:true,fetchedAt:result.fetchedAt,priceChanges:result.priceChanges} : {saved:false,error:result.cacheError,priceChanges:result.priceChanges};
     })().then(respond,error=>respond({saved:false,error:error.message}));
     return true;
   }
@@ -106,7 +109,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     } catch {
       coupon = EbayVariants.getCoupon(html);
     }
-    const result = { rows: EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon})) };
+    const result = { rows: EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon,title:typeof message.title==='string' ? message.title : row.title,image:row.image || message.image})) };
     return EbayListingCache.put(key,result.rows);
   })().then(result => respond(result), error => respond({ error: error.message }));
   return true;

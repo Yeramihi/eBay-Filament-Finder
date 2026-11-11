@@ -53,7 +53,7 @@ globalThis.EbayDock = (() => {
   function save(patch) {
     Object.assign(state,patch);
     // Input changes must never serialize the full scan on every keystroke.
-    if ('results' in patch) dirty[rowsKey] = patch.results;
+    if ('results' in patch) dirty[rowsKey] = mode==='results' ? [...new Map(patch.results.map(row=>[row.url,{url:row.url,title:row.title,image:row.image}])).values()] : patch.results;
     if ('failures' in patch) dirty[failuresKey] = patch.failures;
     const {results,failures,...preferences} = state;
     dirty[stateKey] = preferences;

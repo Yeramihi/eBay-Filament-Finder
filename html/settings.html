@@ -53,6 +53,10 @@
     </fieldset>
     <fieldset id="storage">
       <legend>Storage</legend>
+      <div class="row">
+        <div class="setting-label"><label for="all-cached">Always show all cached data</label><button type="button" class="settings-info" data-help="all-cached-help" aria-label="About showing all cached data" aria-controls="all-cached-help" aria-describedby="all-cached-help" aria-expanded="false">ⓘ</button><div id="all-cached-help" class="settings-tooltip" role="tooltip" popover="manual"><strong>Always show all cached data</strong><p><b>Off by default.</b> When enabled, opening the finder on any search results page loads <b>all unexpired cached listings for that eBay marketplace</b>, even from other queries and results pages.</p><p>This reads saved data only: <b>no scan starts and no listings are fetched</b>. Your Variant and Listing filters, sorting and hidden-list choices still apply.</p><p>Cached prices and stock are not live. Opening a listing or using Refresh retrieves fresh data. Retention and Purge all cache still apply.</p></div></div>
+        <input id="all-cached" type="checkbox" aria-describedby="all-cached-help">
+      </div>
       <div class="storage-row">
         <div><div class="setting-label"><span>Local storage used</span><button type="button" class="settings-info" data-help="storage-help" aria-label="About storage and purging" aria-controls="storage-help" aria-describedby="storage-help" aria-expanded="false">ⓘ</button><div id="storage-help" class="settings-tooltip" role="tooltip" popover="manual"><strong>Local storage usage</strong><p>Includes <b>saved listings, search snapshots and settings</b>. The size updates as storage changes.</p><p><b>Purge all cache</b> removes cached listing data and scan snapshots. Your preferences and hidden-list choices are kept.</p><p>Scans and opened listings can save fresh data afterwards.</p></div></div><output id="storage-size" aria-live="polite">Calculating…</output></div>
         <button id="purge-cache" type="button">Purge all cache</button>
