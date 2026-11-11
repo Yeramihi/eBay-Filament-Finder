@@ -64,11 +64,11 @@ function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,pa
   };
 }
 const listing = id => ({url:`https://www.ebay.co.uk/itm/${id}`,title:`Filament ${id}`});
-test('initial scan seeds and reveals filter; pagination extends and resumes without duplicates',async()=>{
+test('initial scan preserves an empty filter; pagination extends and resumes without duplicates',async()=>{
   const h=harness();await tick();assert.equal(h.collapsed[0],true);
   h.setCandidates([listing(1),listing(2)]);
   await h.buttons[0].handlers.click();await tick();
-  assert.equal(h.get('#variant-query').value,'yellow PLA silk');
+  assert.equal(h.get('#variant-query').value,'');
   assert.equal(h.get('.finder-toolbar').hidden,false);
   assert.equal(h.calls.length,1);
   h.setCandidates([listing(2),listing(3)]);await h.discover(true);
@@ -193,11 +193,14 @@ test('new results resume after a request failure without retrying the already fa
   assert.equal(h.snapshots.filter(x=>x.failures).at(-1).failures.length,1);
 });
 
-test('initial filter drops filament as a whole word regardless of case',async()=>{
-  for(const [query,expected] of [['FILAMENT yellow PLA silk filament','yellow PLA silk'],['"filament" PLA','PLA'],['filament',''],['microfilament PLA filaments','microfilament PLA filaments']]){
-    const h=harness({query});await tick();h.setCandidates([listing(1)]);
+test('starting a scan never copies the eBay query or replaces user-entered filters',async()=>{
+  for(const initial of ['', 'silk purple']) {
+    const h=harness({query:'FILAMENT yellow PLA'});await tick();h.setCandidates([listing(1)]);
+    h.get('#variant-query').value=initial;
+    h.get('#listing-query').value='my listing filter';
     await h.buttons[0].handlers.click();await tick();await h.complete();
-    assert.equal(h.get('#variant-query').value,expected);
+    assert.equal(h.get('#variant-query').value,initial);
+    assert.equal(h.get('#listing-query').value,'my listing filter');
   }
 });
 

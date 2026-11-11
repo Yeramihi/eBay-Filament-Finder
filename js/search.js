@@ -539,12 +539,7 @@
       results=results.filter(row=>valid.has(row.url));
       EbayDock.save({results,allCacheView:showAllCache,pageListingUrls:[...pageListings]});
     }
-    if (!scanStarted) {
-      input.value = EbaySearchQuery().replace(/\bfilament\b/gi, '')
-        .replace(/"\s*"/g, '').replace(/\s+/g, ' ').trim();
-      appliedQuery = input.value;
-      EbayCards.setFiltersExpanded(root, true);
-    }
+    if (!scanStarted) EbayCards.setFiltersExpanded(root, true);
     await configureScan();
     try {
       const candidates=await listings();
