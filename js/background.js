@@ -39,9 +39,14 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type === 'finder-cache-refresh' && sender.id === chrome.runtime.id) {
     (async()=>{
       const url=EbayListingCache.canonical(sender.url);
-      if (!Array.isArray(message.rows) || !message.rows.length || message.rows.some(row=>!row || (!row.inStock&&!row.outOfStock))) return {};
-      return EbayListingCache.put(url,message.rows);
-    })().then(respond,()=>respond({}));
+      if (!Array.isArray(message.rows) || !message.rows.length || message.rows.some(row=>!row || typeof row.label!=='string')) {
+        throw new Error('No readable listing data is available yet.');
+      }
+      // An explicitly opened listing is fresh even if eBay omits stock for a
+      // variant. Preserve that unknown status rather than retaining old data.
+      const result=await EbayListingCache.put(url,message.rows);
+      return result.persisted ? {saved:true,fetchedAt:result.fetchedAt} : {saved:false,error:result.cacheError};
+    })().then(respond,error=>respond({saved:false,error:error.message}));
     return true;
   }
   if (message?.type === 'open-finder-guide' && sender.id === chrome.runtime.id) {

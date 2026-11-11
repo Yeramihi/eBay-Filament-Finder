@@ -28,8 +28,13 @@ globalThis.EbayListingCache = (() => {
     const url=canonical(value);
     const entry={version:1,fetchedAt:Date.now(),rows:rows.map(({cached,fetchedAt,...row})=>row)};
     // Storage failures must not discard successfully retrieved live results.
-    try {await chrome.storage.local.set({[prefix+url]:entry});} catch(error) {console.error('Could not persist listing cache.',error);}
-    return result(entry,false);
+    try {
+      await chrome.storage.local.set({[prefix+url]:entry});
+      return {...result(entry,false),persisted:true,fetchedAt:entry.fetchedAt};
+    } catch(error) {
+      console.error('Could not persist listing cache.',error);
+      return {...result(entry,false),persisted:false,cacheError:error.message || 'Extension storage is unavailable.'};
+    }
   }
   async function removeExpired() {
     const saved=await chrome.storage.local.get(null);

@@ -25,3 +25,5 @@ The bundled guide has not yet been updated for scanning modes and persistent cac
 5. Open an eBay UK or US search results or listing page.
 
 Requires Chrome 114 or later.
+
+The normal listing sidebar confirms cache saves with the saved timestamp, retries transient failures, and offers Retry cache save when persistence fails. Unknown stock status no longer silently prevents saving fresh listing data; unknown values remain unknown.

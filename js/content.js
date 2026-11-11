@@ -136,10 +136,22 @@
           <button class="apply-filters finder-button" type="button">Apply filters</button>
           <div class="status" role="status" aria-live="polite"></div>
         </div>
-        <div class="finder-results"><div class="finder-entries"></div></div>
+        <div class="finder-results"><div class="cache-status status" role="status" aria-live="polite"><span></span> <button type="button" class="cache-retry" hidden>Retry cache save</button></div><div class="finder-entries"></div></div>
       </section>
     `;
 
+    const cacheStatus=root.querySelector('.cache-status');
+    const cacheRetry=root.querySelector('.cache-retry');
+    updateCacheNotice=(message,error=false)=>{
+      cacheStatus.querySelector('span').textContent=message;
+      cacheStatus.classList.toggle('error',error);
+      cacheRetry.hidden=!error;
+    };
+    cacheRetry.addEventListener('click',()=>{
+      savedSignature=undefined;
+      cacheCandidate=undefined;
+      queueCacheSave(readListing());
+    });
     const input = root.querySelector("input");
     const status = root.querySelector(".status");
     const syncSort = EbayCards.controls(root,[['label','Variant'],['total','Individual purchase'],['spool','Bulk purchase*']],(key,direction)=>{sortTouched=true;sortKey=key;ascending=direction;EbayDock.saveSort(key,direction);render();});
@@ -246,20 +258,61 @@
   }
 
   const readListing = () => EbayListingData();
-  let updateRows, scheduled, savedSignature;
-  function refresh(){const rows=readListing();
-    if(rows.length && rows.every(row=>row.inStock||row.outOfStock)) {
-      const signature=JSON.stringify(rows);
-      if(signature!==savedSignature) {
-        savedSignature=signature;
-        chrome.runtime.sendMessage({type:'finder-cache-refresh',rows}).catch(()=>{savedSignature=undefined;});
+  let updateRows, scheduled, savedSignature, cacheCandidate, cacheSaveTimer, cacheSaving=false;
+  let updateCacheNotice=()=>{};
+  function queueCacheSave(rows) {
+    if(!rows.length) return;
+    const signature=JSON.stringify(rows);
+    if(signature===savedSignature) return;
+    if(cacheCandidate?.signature!==signature) {
+      cacheCandidate={signature,rows,attempts:0};
+      clearTimeout(cacheSaveTimer);
+      updateCacheNotice('Updating saved listing data…');
+      // Let eBay finish populating its embedded variant data before replacing
+      // the full saved listing. Later data changes get their own save.
+      cacheSaveTimer=setTimeout(saveCacheCandidate,750);
+    }
+  }
+  async function saveCacheCandidate() {
+    if(cacheSaving || !cacheCandidate || cacheCandidate.signature===savedSignature) return;
+    cacheSaving=true;
+    const candidate=cacheCandidate;
+    candidate.attempts++;
+    let saved=false;
+    try {
+      const response=await chrome.runtime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows});
+      if(response?.saved!==true || !Number.isFinite(response.fetchedAt)) throw new Error(response?.error || 'The extension did not confirm the cache update. Reload this listing if the extension was updated.');
+      savedSignature=candidate.signature;
+      saved=true;
+      updateCacheNotice(`Saved to cache: ${new Date(response.fetchedAt).toLocaleString()}`);
+    } catch(error) {
+      updateCacheNotice(`Could not update saved listing data: ${error.message}`,true);
+    } finally {
+      cacheSaving=false;
+      if(cacheCandidate!==candidate || (!saved && candidate.attempts<3)) {
+        clearTimeout(cacheSaveTimer);
+        cacheSaveTimer=setTimeout(saveCacheCandidate,1000);
       }
     }
-    if(updateRows)updateRows(rows);else if(rows.length)updateRows=mount(rows);}
+  }
+  function refresh(){
+    const rows=readListing();
+    if(updateRows) updateRows(rows);
+    else if(rows.length) updateRows=mount(rows);
+    queueCacheSave(rows);
+  }
   refresh();
   const observer=new MutationObserver(records=>{
     if(records.every(record=>record.target.closest?.('#ebay-finder-dock')))return;
     clearTimeout(scheduled);scheduled=setTimeout(refresh,500);
   });
   observer.observe(document.body,{childList:true,subtree:true,characterData:true});
+  // Hydration may change script text without an observable child-list update.
+  // Re-read briefly after load; unchanged data is never written repeatedly.
+  let hydrationReads=0;
+  const hydrationTimer=setInterval(()=>{
+    refresh();
+    if(++hydrationReads>=15) clearInterval(hydrationTimer);
+  },1000);
+  window.addEventListener('pagehide',()=>clearInterval(hydrationTimer),{once:true});
 })();
