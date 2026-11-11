@@ -104,7 +104,27 @@
   let appliedQuery = '', appliedListingQuery = '', appliedCombine = 'and';
   let sortTouched = false;
   let userPaused = false, scanMode = 'background', visibleJob;
-  let cacheLoading=0;
+  let cacheLoading=0, scanBatch;
+  function registerScanCandidate(listing) {
+    if(!scanBatch || (scanBatch.onlyURL&&scanBatch.onlyURL!==listing.url)) return;
+    if(!scanBatch.positions.has(listing.url)) scanBatch.positions.set(listing.url,scanBatch.positions.size+1);
+  }
+  function currentScanProgress(listing) {
+    if(!scanBatch) return {current:0,total:0};
+    const total=scanBatch.positions.size;
+    if(listing) return {current:scanBatch.positions.get(listing.url)||1,total};
+    const active=[...scanBatch.active].map(url=>scanBatch.positions.get(url)).filter(Number.isFinite);
+    const remaining=[...scanBatch.positions].filter(([url])=>!scanBatch.finished.has(url)).map(([,position])=>position);
+    return {current:Math.min(...(active.length ? active : remaining.length ? remaining : [total])),total};
+  }
+  function updateScanProgress() {
+    if(!running) return;
+    const progress=currentScanProgress();
+    status.textContent=`Scanning ${progress.current} of ${progress.total} listings…`;
+  }
+  function finishScanCandidate(listing) {
+    scanBatch?.active.delete(listing.url);scanBatch?.finished.add(listing.url);updateScanProgress();
+  }
   let scanStarted = false, scanParallel = EbaySettings.defaultParallel;
   let showAllCache=false, scopeRefreshPending=false;
   const pageListings=new Set(), rememberedMissing=new Set();
@@ -238,7 +258,7 @@
     const failureCount = failures.length ? ` · ${failures.length} couldn't be checked` : '';
     let message = '';
     if(cacheLoading&&!running) message='Loading cached listings…';
-    else if (running) message = `Scanning ${checked}/${total} listings…`;
+    else if (running) {const progress=currentScanProgress();message=`Scanning ${progress.current} of ${progress.total} listings…`;}
     else if(total && !scanStarted) message=`${results.length} cached variants from ${new Set(results.map(row=>row.url)).size} listings.`;
     else if (total) {
       const outcome = stopped && checked < total ? 'Scan stopped.' : 'Scan completed.';
@@ -496,6 +516,7 @@
       if (seen.has(listing.url)||rememberedMissing.has(listing.url)) continue;
       seen.add(listing.url);
       queue.push(listing);
+      if(running) {registerScanCandidate(listing);updateScanProgress();}
       total++;
     }
   }
@@ -543,6 +564,9 @@
     if (running || stopped || !queue.length) return;
     cacheRevision++;
     running = true;
+    scanBatch={onlyURL,positions:new Map(),active:new Set(),finished:new Set()};
+    for(const listing of queue) registerScanCandidate(listing);
+    updateScanProgress();
     scan.disabled = true;
     stop.disabled = false;
     scanNotice.hidden = true;
@@ -553,10 +577,11 @@
     const eligible=listing=>!onlyURL || listing.url===onlyURL;
     const hasQueued=()=>queue.some(eligible);
     async function request(listing, visible=scanMode==='visible') {
+      registerScanCandidate(listing);scanBatch.active.add(listing.url);updateScanProgress();
       try {
         let response = await chrome.runtime.sendMessage({type:'scan-listing',url:listing.url,title:listing.title,image:listing.image,visible,
           returnToSource:visible && scanMode==='mixed',
-          progress:{current:checked+1,total},forceRefresh:listing.forceRefresh===true});
+          progress:currentScanProgress(listing),forceRefresh:listing.forceRefresh===true});
         if (response?.pending) {
           visibleJob = response.jobId;
           while (response?.pending) {
@@ -577,6 +602,7 @@
     }
     function accept(listing,response) {
       if(response?.removed) {
+        finishScanCandidate(listing);
         if(response.missing) rememberedMissing.add(listing.url);
         checked++;
         results=results.filter(row=>row.url!==listing.url);
@@ -586,16 +612,19 @@
       }
       // Preserve completed in-flight work after Stop; unfinished listings resume.
       if (stopped && unreadable(response)) {
+        scanBatch.active.delete(listing.url);
         queue.unshift(listing);
         return false;
       }
       if (scanMode !== 'background' && (response?.cancelled || response?.paused || (!response?.skipped && !Array.isArray(response?.rows)))) {
+        scanBatch.active.delete(listing.url);
         queue.unshift(listing);
         stopped = userPaused = true;
         scanNotice.textContent = response?.error || 'Visible scan paused. Click Scan to resume.';
         scanNotice.hidden = false;
         return false;
       }
+      finishScanCandidate(listing);
       checked++;
       if (response?.skipped) {
         failures.push({...listing,error:'Skipped by user.'});
@@ -660,6 +689,7 @@
     } finally {
       if(fallbacks.length) queue.unshift(...fallbacks);
       running = false;
+      scanBatch=undefined;
       if(scopeRefreshPending) scheduleCacheSync();
       scan.disabled = false;
       stop.disabled = true;
