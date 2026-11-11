@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings · eBay Filament finder</title>
+  <link rel="stylesheet" href="../css/settings.css">
+  <script src="../js/settings.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <img src="../images/icons/icon-48.png" alt="" width="36" height="36">
+      <div><p>eBay Filament finder</p><h1>Settings</h1></div>
+    </header>
+    <fieldset id="preferences" disabled>
+      <legend>Appearance</legend>
+      <div class="row">
+        <label for="side">Dock side</label>
+        <select id="side"><option value="left">Left</option><option value="right">Right</option></select>
+      </div>
+      <div class="row">
+        <label for="width">Dock width</label>
+        <select id="width"><option value="25">25%</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option></select>
+      </div>
+      <div class="row">
+        <label for="display">Results layout</label>
+        <select id="display"><option value="tiles">Tiles</option><option value="lines">Single lines</option></select>
+      </div>
+    </fieldset>
+    <fieldset id="scanning" disabled>
+      <legend>Scanning</legend>
+      <div class="row">
+        <label for="parallel">Listings in parallel</label>
+        <input id="parallel" type="number" min="1" max="999" step="1" required aria-describedby="scan-help">
+      </div>
+      <p class="hint" id="scan-help">Default is 5. Changes apply to the next scan.</p>
+      <p class="warning" id="warning" hidden>More than 20 can trigger eBay request limits or verification checks.</p>
+    </fieldset>
+    <p id="status" role="status">Loading settings…</p>
+    <footer>
+      <a id="feedback">Send feedback</a>
+      <div class="settings-actions">
+        <button id="reset" type="button" disabled>Reset</button>
+        <button id="done" type="button">Done</button>
+      </div>
+    </footer>
+    <dialog id="reset-confirmation" aria-labelledby="reset-question">
+      <p id="reset-question">Do you want to reset all settings to default?</p>
+      <div class="settings-actions">
+        <button id="reset-no" type="button" autofocus>No</button>
+        <button id="reset-yes" type="button">Yes</button>
+      </div>
+    </dialog>
+  </main>
+</body>
+</html>
