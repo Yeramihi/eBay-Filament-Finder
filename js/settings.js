@@ -57,9 +57,14 @@ globalThis.EbaySettings = (() => {
       width.value = value;
     }
 
+    let backgroundParallel = defaults.parallelListings;
+    const validParallel = count => Number.isInteger(count) && count >= 1 && count <= 999;
     function updateScanControls() {
-      parallel.disabled = scanMode.value !== 'background';
-      warning.hidden = scanMode.value !== 'background' || !(parallel.valueAsNumber > 20);
+      const background = scanMode.value === 'background';
+      // Serial modes only override the display, never the saved background count.
+      parallel.value = background ? backgroundParallel : 1;
+      parallel.disabled = !background;
+      warning.hidden = !background || !(parallel.valueAsNumber > 20);
     }
 
     function showStatus(message, error = false) {
@@ -88,9 +93,17 @@ globalThis.EbaySettings = (() => {
     resizeEbay.addEventListener('change', () => save({'finder:resizeEbay': resizeEbay.checked}));
     display.addEventListener('change', () => save({'finder:display': display.value}));
     scanMode.addEventListener('change', () => {updateScanControls();save({'finder:scanMode':scanMode.value});});
-    parallel.addEventListener('input', updateScanControls);
+    parallel.addEventListener('input', () => {
+      if (scanMode.value !== 'background') return;
+      if (validParallel(parallel.valueAsNumber)) backgroundParallel = parallel.valueAsNumber;
+      warning.hidden = !(parallel.valueAsNumber > 20);
+    });
     parallel.addEventListener('change', () => {
-      if (parallel.reportValidity()) save({'parallelListings': parallel.valueAsNumber});
+      if (scanMode.value !== 'background') return;
+      if (parallel.reportValidity()) {
+        backgroundParallel = parallel.valueAsNumber;
+        save({'parallelListings': backgroundParallel});
+      }
       else showStatus('Enter a whole number from 1 to 999.', true);
     });
     reset.addEventListener('click', () => {
@@ -109,7 +122,7 @@ globalThis.EbaySettings = (() => {
       showWidth(defaults['finder:widthPercent']);
       display.value = defaults['finder:display'];
       resizeEbay.checked = defaults['finder:resizeEbay'];
-      parallel.value = defaults.parallelListings;
+      backgroundParallel = defaults.parallelListings;
       scanMode.value = defaults['finder:scanMode'];
       cacheAge.value = defaults['finder:cache:maxAge'];
       updateScanControls();
@@ -121,6 +134,11 @@ globalThis.EbaySettings = (() => {
     });
 
     const onChange = (changes, area) => {
+      if (area === 'local' && changes.parallelListings) {
+        const count = changes.parallelListings.newValue;
+        backgroundParallel = validParallel(count) ? count : defaults.parallelListings;
+        updateScanControls();
+      }
       if(area==='local'&&changes['finder:cache:maxAge']) cacheAge.value=changes['finder:cache:maxAge'].newValue || 'week';
       if (area === 'local' && changes['finder:scanMode']) {scanMode.value = ['background','visible','mixed'].includes(changes['finder:scanMode'].newValue) ? changes['finder:scanMode'].newValue : 'background';updateScanControls();}
       if (area === 'local' && changes['finder:resizeEbay']) resizeEbay.checked = changes['finder:resizeEbay'].newValue === true;
@@ -140,7 +158,7 @@ globalThis.EbaySettings = (() => {
       display.value = saved['finder:display'] === 'lines' ? 'lines' : 'tiles';
       scanMode.value = ['background','visible','mixed'].includes(saved['finder:scanMode']) ? saved['finder:scanMode'] : saved['finder:visibleScan'] === true ? 'visible' : 'background';
       const count = saved.parallelListings;
-      parallel.value = Number.isInteger(count) && count >= 1 && count <= 999 ? count : defaults.parallelListings;
+      backgroundParallel = validParallel(count) ? count : defaults.parallelListings;
       updateScanControls();
       preferences.disabled = scanning.disabled = reset.disabled = false;
       showStatus('Changes save automatically.');
