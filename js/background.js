@@ -142,7 +142,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     } catch {
       coupon = EbayVariants.getCoupon(html);
     }
-    const result = { rows: EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon,title:typeof message.title==='string' ? message.title : row.title,image:row.image || message.image})) };
+    const result = { rows: EbayVariants.withPostage(EbayVariants.withBannerOffers(EbayVariants.withVolumePricing(rows,[html]),[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon,title:typeof message.title==='string' ? message.title : row.title,image:row.image || message.image})) };
     return EbayListingCache.put(key,result.rows);
   })().then(result => respond(result), error => respond({ error: error.message }));
   return true;

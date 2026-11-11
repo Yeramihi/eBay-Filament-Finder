@@ -9,6 +9,6 @@ globalThis.EbayListingData = () => {
   const title=document.querySelector('h1.x-item-title__mainTitle, h1')?.textContent?.trim()||'';
   const image=document.querySelector('meta[property="og:image"]')?.content||document.querySelector('.ux-image-carousel-item img')?.src;
   const coupon=EbayVariants.getCoupon(document);
-  return EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,scripts),EbayVariants.getPostage(html))
+  return EbayVariants.withPostage(EbayVariants.withBannerOffers(EbayVariants.withVolumePricing(rows,scripts),scripts),EbayVariants.getPostage(html))
     .map(row=>({...row,title,coupon,image:row.image||image}));
 };
