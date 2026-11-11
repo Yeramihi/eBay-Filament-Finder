@@ -7,6 +7,15 @@
   catch { /* Normal browsing remains available if the worker is unavailable. */ }
   const listingUrl = location.href;
   const pageOpenedAt=Number.isFinite(performance.timeOrigin) ? performance.timeOrigin : Date.now();
+  let listingMissing=false;
+  async function removeMissingListing() {
+    if(!EbayVariants.isMissingListing(document)) return false;
+    listingMissing=true;
+    const response=await chrome.runtime.sendMessage({type:'finder-listing-missing'});
+    if(!response?.removed) throw new Error(response?.error || 'Could not remove the missing listing from cache.');
+    return true;
+  }
+  try {if(await removeMissingListing()) return;} catch(error) {listingMissing=false;console.error(error);}
   let comparisonBaseline;
   try {
     const id=location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
@@ -334,7 +343,7 @@
     priceWarning={host,signature};
   }
   function queueCacheSave(rows) {
-    if(!rows.length) return;
+    if(listingMissing || !rows.length) return;
     const signature=JSON.stringify(rows);
     if(signature===savedSignature) return;
     if(cacheCandidate?.signature!==signature) {
@@ -347,7 +356,7 @@
     }
   }
   async function saveCacheCandidate() {
-    if(cacheSaving || !cacheCandidate || cacheCandidate.signature===savedSignature) return;
+    if(listingMissing || cacheSaving || !cacheCandidate || cacheCandidate.signature===savedSignature) return;
     if(document.readyState!=='complete') {cacheSaveTimer=setTimeout(saveCacheCandidate,500);return;}
     cacheSaving=true;
     const candidate=cacheCandidate;
@@ -375,6 +384,12 @@
     }
   }
   function refresh(){
+    if(listingMissing) return;
+    if(EbayVariants.isMissingListing(document)) {
+      clearTimeout(cacheSaveTimer);cacheCandidate=undefined;
+      removeMissingListing().catch(error=>{listingMissing=false;updateCacheNotice(error.message,true);});
+      return;
+    }
     const rows=readListing();
     if(updateRows) updateRows(rows);
     else if(rows.length) updateRows=mount(rows);

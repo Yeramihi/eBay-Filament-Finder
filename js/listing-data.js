@@ -1,5 +1,6 @@
 // Shared by the normal listing sidebar and the visible-tab scan reader.
 globalThis.EbayListingData = () => {
+  if(EbayVariants.isMissingListing(document)) return [];
   const html=document.documentElement.outerHTML;
   const scripts=Array.from(document.scripts,script=>script.textContent||'');
   const variants=EbayVariants.getRows(scripts);

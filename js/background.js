@@ -3,6 +3,11 @@ importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
 let hiddenChanges=Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'finder-listing-missing' && sender.id === chrome.runtime.id) {
+    (async()=>EbayListingCache.markMissing(EbayListingCache.canonical(sender.url)))()
+      .then(respond,error=>respond({error:error.message}));
+    return true;
+  }
   if (message?.type === 'finder-cache-purge' && sender.id === chrome.runtime.id) {
     EbayListingCache.purge().then(respond,error=>respond({error:error.message}));
     return true;
@@ -91,8 +96,9 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (cached) return cached;
     if (message.visible === true) return EbayVisibleScanner.start(key,sender,message.progress,message.returnToSource === true);
     const response = await fetch(key, { credentials: 'include', signal: AbortSignal.timeout(20000) });
-    if (!response.ok) throw new Error(`eBay returned HTTP ${response.status}.`);
     const html = await response.text();
+    if(EbayVariants.isMissingListing(html)) return EbayListingCache.markMissing(key);
+    if (!response.ok) throw new Error(`eBay returned HTTP ${response.status}.`);
     if (/<(?:title|h1)\b[^>]*>[^<]*(?:captcha|verify you are human|pardon our interruption|security measure)/i.test(html) &&
         !html.includes('"variationCombinations"')) {
       throw new Error('eBay verification page; scan stopped.');

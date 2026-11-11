@@ -527,5 +527,16 @@ globalThis.EbayVariants = (() => {
     const text = label.toLocaleLowerCase();
     return words.every(word => text.includes(word));
   }
-  return { couponLabel, matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, terms, matches };
+  function isMissingListing(source) {
+    if(typeof source!=='string') {
+      const title=source.querySelector('#mainContent [data-testid^="dp-error-banner-container-title-"]');
+      return !!title && /^we looked everywhere!?$/i.test(title.textContent.trim()) && /looks like this page is missing\./i.test(title.parentElement?.textContent || '');
+    }
+    // Match rendered error content only. Translation dictionaries and recently
+    // viewed recommendations on this page must never count as listing data.
+    const markup=source.replace(/<(script|style|template|iframe)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'');
+    const title=/<h[12]\b[^>]*data-testid\s*=\s*(?:"dp-error-banner-container-title-[^"]*"|'dp-error-banner-container-title-[^']*'|dp-error-banner-container-title-[^\s>]+)[^>]*>([\s\S]*?)<\/h[12]\s*>/i.exec(markup);
+    return !!title && /^we looked everywhere!?$/i.test(title[1].replace(/<[^>]*>/g,' ').trim()) && /looks like this page is missing\./i.test(markup.slice(title.index,title.index+1500).replace(/<[^>]*>/g,' '));
+  }
+  return { isMissingListing, couponLabel, matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, terms, matches };
 })();

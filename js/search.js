@@ -501,7 +501,7 @@
     updateScanBanner();
     render();
     const fallbacks=[];
-    const unreadable=response=>response?.error || !Array.isArray(response?.rows);
+    const unreadable=response=>!response?.removed && (response?.error || !Array.isArray(response?.rows));
     const eligible=listing=>!onlyURL || listing.url===onlyURL;
     const hasQueued=()=>queue.some(eligible);
     async function request(listing, visible=scanMode==='visible') {
@@ -528,6 +528,13 @@
       catch (error) { return {error:error.message}; }
     }
     function accept(listing,response) {
+      if(response?.removed) {
+        checked++;
+        results=results.filter(row=>row.url!==listing.url);
+        failures=failures.filter(row=>row.url!==listing.url);
+        EbayDock.save({results,failures,allCacheView:showAllCache,pageListingUrls:[...pageListings]});
+        showFailures();render();return !stopped;
+      }
       // Preserve completed in-flight work after Stop; unfinished listings resume.
       if (stopped && unreadable(response)) {
         queue.unshift(listing);

@@ -146,6 +146,11 @@ globalThis.EbayVisibleScanner = (() => {
         return finish(job,{cancelled:true,error:'The search page stopped responding. Scan paused; this tab was left open.'});
       }
       if (message.type==='visible-scan-report') {
+        if(message.status==='missing') {
+          const tab=await chrome.tabs.get(job.tabId);
+          if(!sameItem(sender.url,job.url)||!unchanged(tab,job)) return {paused:true,error:'Scan tab no longer shows the expected listing.'};
+          return finish(job,await EbayListingCache.markMissing(job.url),true);
+        }
         if (message.status==='ready') {
           const tab=await chrome.tabs.get(job.tabId);
           if (!sameItem(sender.url,job.url) || !unchanged(tab,job)) {

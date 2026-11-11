@@ -42,6 +42,12 @@
         return;
       }
       if (challenge()) {await pause('eBay requires verification. Complete the check on this page, then click Retry.');return;}
+      if(document.readyState==='complete'&&globalThis.EbayVariants?.isMissingListing(document)) {
+        const response=await report({status:'missing'});
+        if(response?.removed) {waiting=true;clearInterval(timer);show('Listing missing on eBay. Removed from cache; continuing…');}
+        else await pause(response?.error || 'Could not remove this missing listing from cache. Retry.');
+        return;
+      }
       if (!expectedItem()) {await pause('eBay opened another page, possibly sign-in. Complete it, then click Retry on the listing.');return;}
       let rows;
       try {rows=globalThis.EbayListingData?.();} catch {rows=null;}

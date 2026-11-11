@@ -3,6 +3,7 @@
 globalThis.EbayListingCache = (() => {
   const prefix = 'finder:cache:item:';
   const ageKey = 'finder:cache:maxAge';
+  const missingPrefix='finder:cache:missing:';
   const days = {day:1,week:7,month:30,never:Infinity};
   function canonical(value) {
     const url = new URL(value);
@@ -53,10 +54,13 @@ globalThis.EbayListingCache = (() => {
   }
   async function write(value, rows, pageOpenedAt=Date.now()) {
     const url=canonical(value);
+    const missing=(await chrome.storage.local.get(missingPrefix+url))[missingPrefix+url];
+    if(missing?.at>pageOpenedAt) return {persisted:false,removed:true,rows:[],cacheError:'This listing no longer exists on eBay.'};
     const entry={version:1,fetchedAt:Date.now(),pageOpenedAt,rows:rows.map(({cached,fetchedAt,...row})=>row)};
     // Storage failures must not discard successfully retrieved live results.
     try {
       await chrome.storage.local.set({[prefix+url]:entry});
+      if(missing) await chrome.storage.local.remove(missingPrefix+url);
       return {...result(entry,false),persisted:true,fetchedAt:entry.fetchedAt};
     } catch(error) {
       console.error('Could not persist listing cache.',error);
@@ -108,9 +112,23 @@ globalThis.EbayListingCache = (() => {
   const put=(value,rows)=>serial(()=>write(value,rows));
   const refreshFromPage=(value,rows,baseline,pageOpenedAt)=>serial(()=>refresh(value,rows,baseline,pageOpenedAt));
   const remove=value=>serial(()=>chrome.storage.local.remove(prefix+canonical(value)));
+  const markMissing=value=>serial(async()=>{
+    const url=canonical(value);
+    await chrome.storage.local.set({[missingPrefix+url]:{at:Date.now()}});
+    await chrome.storage.local.remove(prefix+url);
+    const saved=await chrome.storage.local.get(null),patch={};
+    for(const [key,page] of Object.entries(saved)) if(key.startsWith('finder:saved-page:')&&page?.listings?.some(listing=>listing.url===url)) {
+      patch[key]={...page,listings:page.listings.filter(listing=>listing.url!==url),state:{...page.state,pageListingUrls:(page.state?.pageListingUrls || []).filter(item=>item!==url)}};
+    }
+    if(Object.keys(patch).length) await chrome.storage.local.set(patch);
+    const session=await chrome.storage.session.get(null),sessionPatch={};
+    for(const [key,value] of Object.entries(session)) if(key.startsWith('finder-page:')&&Array.isArray(value)&&value.some(row=>row.url===url)) sessionPatch[key]=value.filter(row=>row.url!==url);
+    if(Object.keys(sessionPatch).length) await chrome.storage.session.set(sessionPatch);
+    return {removed:true,missing:true};
+  });
   const purge=()=>serial(async()=>{
     const local=await chrome.storage.local.get(null);
-    const localKeys=Object.keys(local).filter(key=>key.startsWith(prefix)||key.startsWith('finder:saved-page:'));
+    const localKeys=Object.keys(local).filter(key=>key.startsWith(prefix)||key.startsWith(missingPrefix)||key.startsWith('finder:saved-page:'));
     if(localKeys.length) await chrome.storage.local.remove(localKeys);
     const session=await chrome.storage.session.get(null);
     const sessionKeys=Object.keys(session).filter(key=>key.startsWith('finder-page:'));
@@ -122,5 +140,5 @@ globalThis.EbayListingCache = (() => {
     if(area==='local'&&changes[ageKey]) prune().catch(console.error);
   });
   prune().catch(console.error);
-  return {get,getMany,getAll,put,refreshFromPage,remove,purge,canonical};
+  return {get,getMany,getAll,put,refreshFromPage,remove,markMissing,purge,canonical};
 })();
