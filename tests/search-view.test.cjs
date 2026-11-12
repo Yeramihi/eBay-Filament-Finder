@@ -17,6 +17,8 @@ for(const photos of [false,true]) test(`large ${photos?'photo-grid':'tile'} resu
   let tiles=container.children.filter(node=>node.row);
   assert.ok(tiles.length>=(photos?24:8)&&tiles.length<=(photos?36:12),`Rendered ${tiles.length} tiles for a 500px viewport`);
   assert.equal(rows.length,10000);assert.equal(tiles[0].row.index,0);
+  [rows[0],rows[1]]=[rows[1],rows[0]];listeners.scroll();paint();
+  tiles=container.children.filter(node=>node.row);assert.equal(tiles[0].row.index,1);assert.equal(tiles[1].row.index,0);
   viewport.scrollTop=photos?200000:500000;listeners.scroll();paint();tiles=container.children.filter(node=>node.row);
   assert.ok(tiles.length<=(photos?36:12));assert.ok(tiles[0].row.index>4000);
   view.dispose();assert.equal(frames.size,0);assert.equal(listeners.scroll,undefined);

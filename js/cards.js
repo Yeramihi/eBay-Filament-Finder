@@ -17,6 +17,10 @@ globalThis.EbayCards = (() => {
     .finder-out-of-stock{padding:8px 9px}.finder-out-of-stock summary{cursor:pointer;font-weight:600}
     .finder-entries{display:grid;gap:8px;padding:8px}.finder-entry{display:block;min-width:0;min-height:44px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;color:#18212f!important;background:#fff;text-decoration:none!important;font:13px/1.5 system-ui;overflow-wrap:anywhere}
     a.finder-entry:hover{background:#edf5ff;border-color:#174b83}a.finder-entry:focus-visible{outline:3px solid #2563eb}
+    .finder-entry .finder-image{display:block;overflow:hidden;width:52px;height:52px;float:left;margin:0 10px 6px 0;background-position:center;background-size:contain;background-repeat:no-repeat}
+    .finder-entry .finder-image img{display:block;width:100%;height:100%;float:none;margin:0}
+    .photos-only>.finder-entry .finder-image{width:100%;height:100%;float:none;margin:0}
+    .finder-entries.lines .finder-image{display:none}
     .finder-entry img{width:52px;height:52px;object-fit:contain;float:left;margin:0 10px 6px 0;border-radius:5px}
     .finder-entry .field{display:block}.finder-entry .field:first-of-type{font-weight:650}.finder-entries:not(.lines) .field.sort-active,.finder-entries.lines .line-part.sort-active{background:#e5f0e9;border-radius:4px;padding:3px 6px;margin:3px 0;font-weight:650}.finder-entry .estimate{font-style:italic}.finder-entry.out-of-stock{color:#64748b!important}
     .finder-empty{min-width:0;padding:22px 18px 24px;border:1px solid #cbd8e6;border-radius:12px;background:linear-gradient(150deg,#f3f7fc,#fff 75%);text-align:center;color:#17365d;font:13px/1.5 system-ui;white-space:normal;overflow-wrap:anywhere}
@@ -156,7 +160,7 @@ globalThis.EbayCards = (() => {
     }
     const link=card.querySelector('.listing-content');
     if(link) link.setAttribute('aria-label',`Open ${row.title||'listing'}: ${row.label||''}`);
-    if(!card.querySelector('img')) {
+    if(!card.querySelector('img')&&!card.querySelector('.finder-image')) {
       const fallback=document.createElement('img');fallback.className='finder-photo-fallback';fallback.src=chrome.runtime.getURL('images/icons/icon-48.png');fallback.alt='';card.prepend(fallback);
     }
     const info=document.createElement('button');info.type='button';info.className='photo-info';info.textContent='ⓘ';
@@ -344,9 +348,21 @@ globalThis.EbayCards = (() => {
     if(clickable){const target=new URL(row.url||url);if(!row.singleItem)target.searchParams.set('var',row.id);item.href=target.href;
       if(search){item.target='_blank';item.rel='noopener noreferrer';}
       else item.addEventListener('click',event=>{if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();select(row,target);});}
-    const image=row.image;
-    if(image){try{const source=new URL(image,location.href);if(source.protocol==='https:'){const img=document.createElement('img');img.src=source.href;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove(),{once:true});item.append(img);}}catch{}}
-    else {const icon=document.createElement('img');icon.src=chrome.runtime.getURL('images/icons/icon-48.png');icon.alt='';item.append(icon);}
+    // Each row owns a fresh image element. Keep the placeholder until this exact
+    // request loads, and keep the image slot when it fails (including on reorder).
+    const frame=document.createElement('span');frame.className='finder-image';
+    frame.style.backgroundImage=`url("${chrome.runtime.getURL('images/icons/icon-48.png')}")`;
+    frame.setAttribute('role','img');frame.setAttribute('aria-label','Listing photo unavailable or loading');
+    item.append(frame);
+    if(row.image) {try {
+      const source=new URL(row.image,globalThis.location?.href);
+      if(source.protocol==='https:') {
+        const img=document.createElement('img');img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.style.visibility='hidden';
+        img.addEventListener('load',()=>{if(!img.naturalWidth)return;img.style.visibility='visible';frame.style.backgroundImage='none';frame.setAttribute('aria-label','Listing photo');},{once:true});
+        img.addEventListener('error',()=>{img.remove();frame.setAttribute('aria-label','Listing photo unavailable');},{once:true});
+        frame.append(img);img.src=source.href;
+      }
+    } catch { /* Retain the placeholder for malformed image URLs. */ }}
     const fields=[];
     function field(label,value,tooltip,estimate=false){if(!value)return;const span=document.createElement('span');span.className='field'+(estimate?' estimate':'');span.dataset.sortField=({'Listing':'title','Variant':'label','Individual purchase':'total','Bulk purchase*':'spool'})[label]||'';if(row.singleItem&&label==='Listing')span.dataset.sortAlias='label';span.textContent=`${label}: ${value}`;fields.push(span.textContent+(tooltip&&tooltip!==span.textContent?`\n${tooltip}`:''));if(tooltip)EbayCards.tooltip(span,tooltip);item.append(span);}
     if(search||row.singleItem)field('Listing',row.title||row.label);

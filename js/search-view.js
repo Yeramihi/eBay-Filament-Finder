@@ -63,7 +63,8 @@ globalThis.EbaySearchView = (()=>{
           entry.setAttribute('role','listitem');entry.setAttribute('aria-posinset',String(index+1));entry.setAttribute('aria-setsize',String(view.rows.length));
           next.set(row,entry);nodes.push(entry);
         }
-        const changed=next.size!==view.nodes.size||[...next.keys()].some(row=>!view.nodes.has(row));
+        const previousRows=[...view.nodes.keys()];
+        const changed=next.size!==view.nodes.size||[...next.keys()].some((row,index)=>row!==previousRows[index]);
         if(changed) globalThis.EbayCards?.closeTooltip();
         view.nodes=next;
         view.top.style.height=`${view.offsets[firstBand] || 0}px`;

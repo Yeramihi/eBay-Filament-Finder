@@ -59,3 +59,5 @@ Mixed bulk average now uses discounted purchase estimates even without a shared 
 Settings → Results layout → Photos only displays the existing sorted and filtered variants in a responsive image grid. Hover, focus or click a photo’s corner ⓘ for the full tile, including calculations, cache information and listing actions. Calculation ⓘ tooltips work inside this detail panel. Close, Escape or clicking outside dismisses it. Search grids continue to render roughly two screenfuls while filtering and sorting use all loaded data.
 
 Search results view and Listing page view are configured independently in Settings. Each page type also remembers its own sort field and direction. Existing shared view preferences remain the fallback until a page-specific view is saved.
+
+Listing photos keep a contained placeholder until their own image request succeeds. Failed or invalid image URLs retain that placeholder rather than leaving an empty slot. Grid window updates compare row order as well as membership, so reshuffling the same visible rows updates their DOM order.

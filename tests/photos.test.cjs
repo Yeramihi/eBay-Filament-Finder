@@ -57,3 +57,19 @@ test('photo details preserve listing-wide actions and close when virtual tiles a
   parent.querySelector('[data-action="visibility"]').fire('click');assert.equal(hidden,30);
   api.closeTooltip();assert.equal(root.querySelector('.finder-photo-details'),null);
 });
+
+test('images retain a placeholder until loaded and failed photos cannot retain old pixels',()=>{
+  const {root,api}=setup();
+  const row={title:'Filament',label:'Yellow',singleItem:true,inStock:true,amount:10,currency:'GBP',total:10,image:'https://example.com/same.jpg'};
+  const first=api.entry(row,r=>'£'+r.amount),second=api.entry({...row,label:'Another yellow'},r=>'£'+r.amount);root.append(first,second);
+  const image=first.querySelector('img'),other=second.querySelector('img'),frame=first.querySelector('.finder-image');
+  assert.notEqual(image,other,'repeated URLs still have independent image elements');
+  assert.equal(image.style.visibility,'hidden');assert.match(frame.style.backgroundImage,/icon-48/);
+  image.naturalWidth=300;image.fire('load');assert.equal(image.style.visibility,'visible');assert.equal(frame.style.backgroundImage,'none');
+  other.fire('error');assert.equal(second.querySelector('img'),null);assert.ok(second.querySelector('.finder-image'));
+  assert.match(second.querySelector('.finder-image').style.backgroundImage,/icon-48/);
+  const refreshed=api.entry({...row,image:'https://example.com/fails.jpg'},r=>'£'+r.amount);
+  first.remove();root.prepend(refreshed);assert.equal(refreshed.querySelector('img').style.visibility,'hidden');
+  refreshed.querySelector('img').fire('error');assert.equal(refreshed.querySelector('img'),null);
+  assert.match(refreshed.querySelector('.finder-image').style.backgroundImage,/icon-48/);
+});
