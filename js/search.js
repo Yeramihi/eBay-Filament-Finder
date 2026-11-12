@@ -253,7 +253,6 @@
     virtualView.set(resultsSection.querySelector('.finder-entries'),entries,context,!entries.length&&showResults ? EbayCards.emptyState({scanning:running,outOfStock:outOfStock.length>0}) : null);
     virtualView.set(hiddenSection.querySelector('.finder-entries'),hiddenEntries,context);
     virtualView.set(stockSection.querySelector('.finder-entries'),outOfStock,context);
-    root.querySelector('.finder-sort-menu').hidden=!entries.length&&!outOfStock.length&&!hiddenEntries.length;
     syncSort(sortKey,ascending);
     persist();
     const failureCount = failures.length ? ` · ${failures.length} couldn't be checked` : '';

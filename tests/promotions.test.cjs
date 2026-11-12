@@ -96,3 +96,16 @@ test('DOM cap parsing agrees with worker markup and ambiguous caps are rejected'
   assert.equal(api.getCoupon(subtitle('20% off Code: SAVE Maximum discount: £25')).maxSaving,25);
   assert.equal(api.getCoupon(subtitle('20% off Code: SAVE Max unknown')),null);
 });
+
+test('mixed average applies coupon-only discounts and caps instead of raw item prices',()=>{
+  const coupon={percent:20,maxSaving:75,capCurrency:'GBP'};
+  assert.equal(api.matchingAverage([row(699,{coupon})]).amount,624);
+  assert.equal(api.matchingAverage([row(15,{coupon}),row(16,{coupon})]).amount,12.4);
+  assert.equal(api.matchingAverage([row(100,{coupon,postage:10,total:110})]).amount,90);
+});
+test('mixed average includes fixed coupons and per-variant offers even when quantities differ',()=>{
+  const coupon={amount:5,currency:'GBP'};
+  assert.equal(api.matchingAverage([row(10,{coupon}),row(20,{coupon})]).amount,10);
+  const rows=[row(10,{title:'Buy 5 Pay 3'}),row(10,{title:'Buy 4 Pay 3'})];
+  assert.equal(api.matchingAverage(rows).amount,6.75);assert.equal(api.matchingAverage(rows).offer,null);
+});

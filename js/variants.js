@@ -539,8 +539,10 @@ globalThis.EbayVariants = (() => {
     const offerAverage = compatible ? Math.round(
       priced.reduce((sum,p) => sum + Math.round(p.total * 100),0) /
       (priced.length * offer.spools)) / 100 : null;
-    return {amount:offerAverage ?? amount,baseAmount:amount,currency:available[0].currency,count:available.length,
-      approximate:available.some(row => row.approximate),
+    const discountedAverage=Math.round(estimates.reduce((sum,{estimate})=>sum+Math.round(estimate.amount*100),0)/estimates.length)/100;
+    const coupons=[...new Map(estimates.filter(({estimate})=>estimate.coupon).map(({estimate})=>[JSON.stringify(estimate.coupon),estimate.coupon])).values()];
+    return {amount:offerAverage ?? discountedAverage,baseAmount:amount,coupons,shippingUnknown:estimates.some(({estimate})=>estimate.shippingUnknown),perVariant:!compatible,currency:available[0].currency,count:available.length,
+      approximate:available.some(row => row.approximate||row.totalApproximate||row.postageApproximate),
       offer:compatible ? {quantity:offer.spools,identical:offer.identical,
         average:offerAverage,
         cheapest:priced.reduce((a,b) => a.total <= b.total ? a : b),

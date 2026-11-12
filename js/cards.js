@@ -11,12 +11,9 @@ globalThis.EbayCards = (() => {
     .finder-results{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
     .finder-button:hover:not(:disabled){background:#f1f6fc}
     .finder-button:disabled{opacity:.55;cursor:default}
-    .finder-sort-menu{padding:0}
-    .finder-sort-menu summary{display:flex;align-items:center;white-space:nowrap;list-style:none}
-    .finder-sort-menu summary::after{content:' ▾';margin-left:4px}
-    .finder-sort{position:absolute;top:100%;left:9px;right:9px;display:flex;align-items:center;gap:8px;padding:8px;background:white;border:1px solid #aab7c7;border-radius:6px;box-shadow:0 4px 12px #17365d22}
-    .finder-sort select{font:inherit;min-height:44px;max-width:100%;padding:6px;border:1px solid #aab7c7;border-radius:5px;background:white;color:#18212f}
-    .finder-sort select{flex:1;min-width:0}
+    .finder-sort-menu{flex:none;padding:0;background:#eef2f7;border-bottom:1px solid #d7e1ed}
+    .finder-sort{display:flex;align-items:center;gap:8px;padding:6px 9px;font:600 12px system-ui}
+    .finder-sort select{font:12px system-ui;min-height:32px;max-width:100%;padding:5px 7px;border:1px solid #aab7c7;border-radius:5px;background:white;color:#18212f;flex:1;min-width:0}
     .finder-out-of-stock{padding:8px 9px}.finder-out-of-stock summary{cursor:pointer;font-weight:600}
     .finder-entries{display:grid;gap:8px;padding:8px}.finder-entry{display:block;min-width:0;min-height:44px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;color:#18212f!important;background:#fff;text-decoration:none!important;font:13px/1.5 system-ui;overflow-wrap:anywhere}
     a.finder-entry:hover{background:#edf5ff;border-color:#174b83}a.finder-entry:focus-visible{outline:3px solid #2563eb}
@@ -147,7 +144,7 @@ globalThis.EbayCards = (() => {
     if(!average)return;
     const field=document.createElement('span');field.className='field average-price';field.dataset.sortField='average';field.classList.toggle('sort-active',sortKey==='average');
     const money=amount=>format({amount,currency:average.currency,approximate:average.approximate});
-    const priceText = `${money(average.amount)}${average.offer ? `/item (${average.offer.quantity}-item offer)` : ''}${average.offer?.shippingUnknown ? ' ⚠' : ''}`;
+    const priceText = `${money(average.amount)}${average.offer ? `/item (${average.offer.quantity}-item offer)` : ''}${average.shippingUnknown||average.offer?.shippingUnknown ? ' ⚠' : ''}`;
     field.append(document.createTextNode(`Mixed bulk average: ${priceText} `));
 
     const marker=document.createElement('span');marker.className='experimental-marker';
@@ -170,8 +167,13 @@ globalThis.EbayCards = (() => {
         if(offer.termsUrl)add('p',`Offer terms: ${offer.termsUrl}`);
         if(offer.coupon)add('p',`Includes recognised ${EbayVariants.couponLabel(offer.coupon)} coupon${offer.coupon.code ? ` (code ${offer.coupon.code})` : ''}; ${Number.isFinite(offer.coupon.amount) ? 'the fixed voucher applies once per order. ' : ''}Check eligibility, limits and whether offers combine.`);
         add('p',offer.shippingUnknown?'Postage is unknown for some variants and is excluded where unknown.':'Recognised postage is added once per selection; actual delivery charges may differ.');
-      }else add('p','No consistent quantity offer recognised across these variants. Showing the mean item price before offers, coupons and postage.');
-      if(average.offer)add('p',`Before offers: ${money(average.baseAmount)}/item, excluding coupons and postage.`);
+      }else {
+        add('p','Mean of each matching variant’s calculated bulk-purchase price, including recognised discounts, coupons, saving caps and known postage.');
+        add('p','Each variant counts once. If quantities or offers differ, each estimate uses its own purchase requirement; this is not a quote for one combined basket.');
+        for(const coupon of average.coupons || []) add('p',`Includes ${coupon.source==='subtitle'?'advertised':'recognised'} coupon ${EbayVariants.couponLabel(coupon)}${coupon.code?` (code ${coupon.code})`:''}. Any saving cap is applied once to the order used for each variant’s estimate. Check eligibility and whether offers combine.`);
+        add('p',average.shippingUnknown ? 'Unknown postage is excluded where unavailable.' : 'Known postage is included in each variant’s purchase estimate.');
+      }
+      add('p',`Before offers: ${money(average.baseAmount)}/item, excluding coupons and postage.`);
     };
     tooltip(field,details);
     const total=item.querySelector('[data-sort-field="total"]');
@@ -240,35 +242,19 @@ globalThis.EbayCards = (() => {
     EbayRuntime.local.get('finder:display').then(saved => {
       if (!displayChanged) showDisplay(saved['finder:display']);
     }).catch(EbayRuntime.report);
-    const sortMenu = document.createElement('details');
+    const sortMenu = document.createElement('div');
     sortMenu.className = 'finder-sort-menu';
-    sortMenu.hidden = true;
-    const sortButton = document.createElement('summary');
-    sortButton.className = 'finder-button';
-    sortButton.textContent = 'Sort by';
     const label = document.createElement('label');
-    label.className = 'finder-sort';
-    label.textContent = 'Order';
-    const sort = document.createElement('select');
-    sort.setAttribute('aria-label', 'Sort by');
-    for (const [key, text] of keys) {
-      sort.append(new Option(`${text} — ascending`, `${key}:true`));
-      sort.append(new Option(`${text} — descending`, `${key}:false`));
+    label.className = 'finder-sort';label.textContent='Sort by';
+    const sort=document.createElement('select');sort.setAttribute('aria-label','Sort by');
+    for(const [key,text] of keys) {
+      const alphabetic=key==='title'||key==='label';
+      sort.append(new Option(`${text} — ${alphabetic?'A–Z':'Low–High'}`,`${key}:true`));
+      sort.append(new Option(`${text} — ${alphabetic?'Z–A':'High–Low'}`,`${key}:false`));
     }
-    label.append(sort);
-    sortMenu.append(sortButton, label);
-    toggleRow.append(sortMenu);
-    sort.addEventListener('change', () => {
-      const [key, direction] = sort.value.split(':');
-      sortMenu.open = false;
-      sortButton.focus();
-      onSort(key, direction === 'true');
-    });
-    sortMenu.addEventListener('keydown', event => {
-      if (event.key !== 'Escape' || !sortMenu.open) return;
-      event.stopPropagation();
-      sortMenu.open = false;
-      sortButton.focus();
+    label.append(sort);sortMenu.append(label);toggleRow.after(sortMenu);
+    sort.addEventListener('change',()=>{
+      const [key,direction]=sort.value.split(':');onSort(key,direction==='true');
     });
     return (key,ascending)=>{
       sort.value=`${key}:${ascending}`;
@@ -370,9 +356,7 @@ globalThis.EbayCards = (() => {
   }
   function showEntries(root, entries, outOfStock, hiddenEntries=[]) {
     activeTooltip?.();
-    const sortMenu = root.querySelector('.finder-sort-menu');
-    sortMenu.hidden = hiddenEntries.length === 0 && outOfStock.length === 0 && !entries.some(entry => entry.classList.contains('finder-entry'));
-    if (sortMenu.hidden) sortMenu.open = false;
+
     root.querySelector('.finder-entries').replaceChildren(...entries);
     const hidden=root.querySelector('.finder-hidden');
     if(hidden) {
