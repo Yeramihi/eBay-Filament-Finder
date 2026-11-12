@@ -51,3 +51,9 @@ test('existing shared view preference remains the fallback on both page types',a
     await Promise.resolve();assert.equal(h.nodes.get('.finder-entries').classList.values['photos-only'],true);
   }
 });
+
+test('fresh search pages default to photos while listing pages default to tiles',async()=>{
+ const search=setup([['total','Price']],'/sch/i.html');const listing=setup([['total','Price']],'/itm/123');await Promise.resolve();
+ assert.equal(search.nodes.get('.finder-entries').classList.values['photos-only'],true);
+ assert.equal(listing.nodes.get('.finder-entries').classList.values['photos-only'],false);
+});

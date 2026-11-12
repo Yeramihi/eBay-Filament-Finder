@@ -39,12 +39,12 @@
       </nav>
       <div class="finder-toolbar" id="finder-toolbar" hidden>
         <div class="filters">
-          <label for="variant-query">Variant</label><input id="variant-query" placeholder='e.g. ASA yellow' autocomplete="off">
+          <label for="variant-query">Variant</label><input id="variant-query" autocomplete="off">
           <div class="combine" role="radiogroup" aria-label="Combine Variant and Listing filters">
             <label><input type="radio" name="combine" value="and" checked> AND</label>
             <label><input type="radio" name="combine" value="or"> OR</label>
           </div>
-          <label for="listing-query">Listing</label><input id="listing-query" placeholder='e.g. JAYO "Buy 5 pay 3"' autocomplete="off">
+          <label for="listing-query">Listing</label><input id="listing-query" autocomplete="off">
         </div><div class="controls"><button type="button" class="apply-filters finder-button">Apply filters</button></div>
       </div>
       <div class="finder-results">
@@ -103,7 +103,7 @@
   let sortKey = 'total', ascending = true;
   let appliedQuery = '', appliedListingQuery = '', appliedCombine = 'and';
   let sortTouched = false;
-  let userPaused = false, scanMode = 'background', visibleJob;
+  let userPaused = false, scanMode = 'mixed', visibleJob;
   let cacheLoading=0, scanBatch;
   function registerScanCandidate(listing) {
     if(!scanBatch || (scanBatch.onlyURL&&scanBatch.onlyURL!==listing.url)) return;
@@ -463,7 +463,7 @@
   }
   async function configureScan() {
     const settings=await EbayRuntime.local.get(['parallelListings','finder:visibleScan','finder:scanMode']).catch(()=>({}));
-    scanMode=['background','visible','mixed'].includes(settings['finder:scanMode']) ? settings['finder:scanMode'] : settings['finder:visibleScan']===true ? 'visible' : 'background';
+    scanMode=['background','visible','mixed'].includes(settings['finder:scanMode']) ? settings['finder:scanMode'] : settings['finder:visibleScan']===true ? 'visible' : 'mixed';
     const parallel=settings.parallelListings;
     scanParallel=Number.isInteger(parallel)&&parallel>=1&&parallel<=999 ? parallel : EbaySettings.defaultParallel;
     if(scanMode==='visible') scanParallel=1;

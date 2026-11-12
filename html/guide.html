@@ -57,7 +57,7 @@
 <figure class="narrow-shot"><a href="../images/guide/hidden-results.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/hidden-results.jpg" alt="Hidden listings have Unhide controls and an expiry; no cache needs to be deleted." loading="lazy"></a><figcaption>Hidden listings have Unhide controls and an expiry; no cache needs to be deleted. Click to open the complete screenshot.</figcaption>
 </figure>
 <h3>Retention and storage</h3>
-<p><strong>Maximum saved listing age</strong>: 1 day, 1 week (default), 1 month (30 days), or Never dropped. Expired data is no longer reused as a fresh-enough cache entry. Never dropped still allows manual deletion and removal of confirmed missing listings.</p>
+<p><strong>Maximum saved listing age</strong>: 1 day, 1 week, 1 month (30 days, default), or Never dropped. Expired data is no longer reused as a fresh-enough cache entry. Never dropped still allows manual deletion and removal of confirmed missing listings.</p>
 <p><strong>Local storage used</strong> shows how much space the extension’s local data uses, including preferences and records. <strong>Purge all cache</strong> removes saved listing data and scan snapshots; preferences, hidden choices and remembered missing IDs are kept. Active scans or opened listings may save fresh data again after a purge. There is no undo for a purge. The extension requests unlimitedStorage so a large collection can grow beyond Chrome’s normal local-storage quota; available disk space still matters.</p>
 <h3>Missing listings</h3>
 <p>The explicit eBay “We looked everywhere! / Looks like this page is missing” page removes the listing from cache and remembers its ID. Future scans skip those IDs, including ghost search results. Generic server errors and verification pages do not mark listings missing. <strong>Clear remembered missing listings</strong> forgets all missing IDs at once; it does not purge valid cached listings. If you manually reopen a remembered listing and it becomes readable again, fresh data replaces its missing record.</p>
@@ -82,7 +82,7 @@
 </section>
 <section id="views"><p class="eyebrow">06 / YOUR WORKSPACE</p>
 <h2>Three views, saved independently</h2>
-<p>Settings has separate <strong>Search results view</strong> and <strong>Listing page view</strong> selectors. Both default to Tiles. Each page type also remembers its own sort choice and direction.</p>
+<p>Settings has separate <strong>Search results view</strong> and <strong>Listing page view</strong> selectors. Search results default to Photos only; listing pages default to Tiles. Each page type also remembers its own sort choice and direction.</p>
 <div class="table-wrap"><table><thead><tr><th>View</th><th>What you see</th><th>How to inspect details</th></tr>
 </thead>
 <tbody><tr><td>Tiles</td><td>Full listing/variant names, price calculations, stock and cache details.</td><td>Use each field’s ⓘ; the active sort field is highlighted green.</td></tr>
@@ -298,11 +298,11 @@
 </thead>
 <tbody><tr><td>Dock side</td><td>Left / Right; default Right.</td><td>Choose the side of the window.</td></tr>
 <tr><td>Dock width</td><td>25%, 50%, 75%, 100%; default 25%.</td><td>Open width; dragging can save a custom value.</td></tr>
-<tr><td>Search results view</td><td>Tiles (default), Single lines, Photos only.</td><td>Saved independently of listing pages.</td></tr>
+<tr><td>Search results view</td><td>Tiles, Single lines, Photos only (default).</td><td>Saved independently of listing pages.</td></tr>
 <tr><td>Listing page view</td><td>Tiles (default), Single lines, Photos only.</td><td>Saved independently of search results.</td></tr>
 <tr><td>Resize eBay</td><td>Off (default) / On.</td><td>Overlay or place beside the page; collapsed rail always protected.</td></tr>
-<tr><td>Scanning mode</td><td>Background (default), Visible tabs, Mixed.</td><td>How new/expired listings are retrieved. Applied on next Scan.</td></tr>
-<tr><td>Maximum saved listing age</td><td>1 day, 1 week (default), 1 month = 30 days, Never dropped.</td><td>Retrieval age for cache reuse, not time since last display.</td></tr>
+<tr><td>Scanning mode</td><td>Background, Visible tabs, Mixed (default).</td><td>How new/expired listings are retrieved. Applied on next Scan.</td></tr>
+<tr><td>Maximum saved listing age</td><td>1 day, 1 week, 1 month = 30 days (default), Never dropped.</td><td>Retrieval age for cache reuse, not time since last display.</td></tr>
 <tr><td>Listings in parallel</td><td>1–999; default 5.</td><td>Background count. More than 20 produces a warning. Visible tabs shows 1 without overwriting your saved count. Mixed falls back to 1 only for visible recovery.</td></tr>
 <tr><td>Always show all cached data</td><td>Off (default) / On.</td><td>Load all unexpired data for this eBay marketplace without an active scan.</td></tr>
 <tr><td>Local storage used</td><td>Read-only live size.</td><td>Includes local extension data. Purge all cache is alongside it.</td></tr>

@@ -4,13 +4,13 @@ globalThis.EbaySettings = (() => {
   const defaults = {
     'finder:side': 'right',
     'finder:widthPercent': 25,
-    'finder:results:display': 'tiles',
+    'finder:results:display': 'photos',
     'finder:listing:display': 'tiles',
     'finder:resizeEbay': false,
     parallelListings: 5,
     'finder:visibleScan': false,
-    'finder:scanMode': 'background',
-    'finder:cache:maxAge': 'week',
+    'finder:scanMode': 'mixed',
+    'finder:cache:maxAge': 'month',
     'finder:cache:showAll': false,
     'finder:results:sort': {key:'total', ascending:true},
     'finder:listing:sort': {key:'total', ascending:true}
@@ -243,8 +243,8 @@ globalThis.EbaySettings = (() => {
         backgroundParallel = validParallel(count) ? count : defaults.parallelListings;
         updateScanControls();
       }
-      if(area==='local'&&changes['finder:cache:maxAge']) cacheAge.value=changes['finder:cache:maxAge'].newValue || 'week';
-      if (area === 'local' && changes['finder:scanMode']) {scanMode.value = ['background','visible','mixed'].includes(changes['finder:scanMode'].newValue) ? changes['finder:scanMode'].newValue : 'background';updateScanControls();}
+      if(area==='local'&&changes['finder:cache:maxAge']) cacheAge.value=changes['finder:cache:maxAge'].newValue || 'month';
+      if (area === 'local' && changes['finder:scanMode']) {scanMode.value = ['background','visible','mixed'].includes(changes['finder:scanMode'].newValue) ? changes['finder:scanMode'].newValue : 'mixed';updateScanControls();}
       if (area === 'local' && changes['finder:resizeEbay']) resizeEbay.checked = changes['finder:resizeEbay'].newValue === true;
       if (area === 'local' && changes['finder:widthPercent']) {
         showWidth(changes['finder:widthPercent'].newValue);
@@ -256,14 +256,14 @@ globalThis.EbaySettings = (() => {
       'finder:side', 'finder:widthPercent', 'finder:width', 'finder:display', 'finder:results:display', 'finder:listing:display', 'finder:resizeEbay', 'parallelListings', 'finder:visibleScan', 'finder:scanMode', 'finder:cache:maxAge', 'finder:cache:showAll'
     ]).then(saved => {
       allCached.checked=saved['finder:cache:showAll']===true;
-      cacheAge.value = ['day','week','month','never'].includes(saved['finder:cache:maxAge']) ? saved['finder:cache:maxAge'] : 'week';
+      cacheAge.value = ['day','week','month','never'].includes(saved['finder:cache:maxAge']) ? saved['finder:cache:maxAge'] : 'month';
       side.value = saved['finder:side'] === 'left' ? 'left' : 'right';
       showWidth(saved['finder:widthPercent'], saved['finder:width']);
       resizeEbay.checked = saved['finder:resizeEbay'] === true;
-      const view = key => {const value=saved[key] ?? saved['finder:display'];return ['tiles','lines','photos'].includes(value) ? value : 'tiles';};
+      const view = key => {const value=saved[key] ?? saved['finder:display'];return ['tiles','lines','photos'].includes(value) ? value : defaults[key];};
       display.value = view('finder:results:display');
       listingDisplay.value = view('finder:listing:display');
-      scanMode.value = ['background','visible','mixed'].includes(saved['finder:scanMode']) ? saved['finder:scanMode'] : saved['finder:visibleScan'] === true ? 'visible' : 'background';
+      scanMode.value = ['background','visible','mixed'].includes(saved['finder:scanMode']) ? saved['finder:scanMode'] : saved['finder:visibleScan'] === true ? 'visible' : 'mixed';
       const count = saved.parallelListings;
       backgroundParallel = validParallel(count) ? count : defaults.parallelListings;
       updateScanControls();

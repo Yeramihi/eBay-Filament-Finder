@@ -36,7 +36,7 @@ function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,pa
       controlMessages.push(message);
       if(message.type==='visible-scan-poll')return new Promise(resolve=>polls.push(response=>{if(response.rows)cache.set(activeURL,response.rows);resolve(response);}));
       return Promise.resolve({cancelled:true});}},
-      storage:{onChanged:{addListener(){}},local:{get:async()=>({parallelListings:parallel,'finder:visibleScan':visibleMode,'finder:scanMode':mode,'finder:cache:showAll':allCache})}}},
+      storage:{onChanged:{addListener(){}},local:{get:async()=>({parallelListings:parallel,'finder:visibleScan':visibleMode,'finder:scanMode':mode===undefined ? (visibleMode?'visible':'background') : mode,'finder:cache:showAll':allCache})}}},
 
     EbaySearchPagination:()=>pagination,
     EbaySearchListings:()=>candidates,
@@ -252,8 +252,8 @@ test('visible job is polled while paused and retains its original candidate on c
 });
 
 // Mixed mode drains in-flight background work before serial visible recovery.
-test('mixed drains parallel background jobs before visible recovery, then resumes background',async()=>{
-  const h=harness({mode:'mixed',parallel:2});await tick();h.setCandidates([listing(1),listing(2),listing(3)]);
+for(const mode of ['mixed',null]) test(`${mode===null?'default mixed':'mixed'} drains parallel background jobs before visible recovery, then resumes background`,async()=>{
+  const h=harness({mode,parallel:2});await tick();h.setCandidates([listing(1),listing(2),listing(3)]);
   await h.buttons[0].handlers.click();await tick();
   assert.equal(h.calls.length,2);assert.equal(h.requestMessages[0].visible,false);
   h.pending.shift()({error:'eBay requires verification'});await tick();

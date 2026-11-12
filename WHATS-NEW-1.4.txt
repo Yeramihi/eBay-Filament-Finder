@@ -1,5 +1,7 @@
 eBay Filament finder 1.4
 
+New defaults: Mixed scanning, 1-month cache retention, Photos only search results and Tiles on listing pages. Filter inputs have no example prompts. Existing saved preferences are preserved.
+
 Faster browsing with large saved collections
 Saved listings now load asynchronously in small batches. Search results draw roughly two screenfuls at a time and replace off-screen tiles as you scroll. Filtering and sorting still use all loaded variants, with processing split into short slices to keep the interface responsive. Cache reuse, listing deduplication and smaller search snapshots reduce repeated work. Performance depends on your device and collection size.
 

@@ -145,7 +145,7 @@
           <div class="filter">
             <input
               type="text"
-              placeholder="Filter variants (all words)"
+
               aria-label="Filter variant names: all words, in any order"
               autocomplete="off"
               spellcheck="false"

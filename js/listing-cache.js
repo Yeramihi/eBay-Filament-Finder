@@ -13,7 +13,7 @@ globalThis.EbayListingCache = (() => {
   }
   function valid(entry, setting) {
     return entry?.version === 1 && Array.isArray(entry.rows) && entry.rows.length &&
-      Number.isFinite(entry.fetchedAt) && Date.now()-entry.fetchedAt < (days[setting] || 7)*86400000;
+      Number.isFinite(entry.fetchedAt) && Date.now()-entry.fetchedAt < (days[setting] || 30)*86400000;
   }
   function result(entry, cached) {
     return {rows:entry.rows.map(row=>({...row,fetchedAt:entry.fetchedAt,cached}))};

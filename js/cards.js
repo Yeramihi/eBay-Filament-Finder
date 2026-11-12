@@ -298,16 +298,18 @@ globalThis.EbayCards = (() => {
         list.classList.toggle('photos-only',value==='photos');
       }
     }
-    const displayKey = `finder:${globalThis.location?.pathname.startsWith('/itm/') ? 'listing' : 'results'}:display`;
+    const listingPage=globalThis.location?.pathname.startsWith('/itm/');
+    const defaultDisplay=listingPage ? 'tiles' : 'photos';
+    const displayKey = `finder:${listingPage ? 'listing' : 'results'}:display`;
     let displayChanged = false;
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes[displayKey]) {
         displayChanged = true;
-        showDisplay(changes[displayKey].newValue);
+        showDisplay(changes[displayKey].newValue ?? defaultDisplay);
       }
     });
     EbayRuntime.local.get([displayKey,'finder:display']).then(saved => {
-      if (!displayChanged) showDisplay(saved[displayKey] ?? saved['finder:display']);
+      if (!displayChanged) showDisplay(saved[displayKey] ?? saved['finder:display'] ?? defaultDisplay);
     }).catch(EbayRuntime.report);
     const sortMenu = document.createElement('div');
     sortMenu.className = 'finder-sort-menu';
