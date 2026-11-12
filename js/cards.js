@@ -294,15 +294,16 @@ globalThis.EbayCards = (() => {
         list.classList.toggle('photos-only',value==='photos');
       }
     }
+    const displayKey = `finder:${globalThis.location?.pathname.startsWith('/itm/') ? 'listing' : 'results'}:display`;
     let displayChanged = false;
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'local' && changes['finder:display']) {
+      if (area === 'local' && changes[displayKey]) {
         displayChanged = true;
-        showDisplay(changes['finder:display'].newValue);
+        showDisplay(changes[displayKey].newValue);
       }
     });
-    EbayRuntime.local.get('finder:display').then(saved => {
-      if (!displayChanged) showDisplay(saved['finder:display']);
+    EbayRuntime.local.get([displayKey,'finder:display']).then(saved => {
+      if (!displayChanged) showDisplay(saved[displayKey] ?? saved['finder:display']);
     }).catch(EbayRuntime.report);
     const sortMenu = document.createElement('div');
     sortMenu.className = 'finder-sort-menu';

@@ -4,7 +4,8 @@ globalThis.EbaySettings = (() => {
   const defaults = {
     'finder:side': 'right',
     'finder:widthPercent': 25,
-    'finder:display': 'tiles',
+    'finder:results:display': 'tiles',
+    'finder:listing:display': 'tiles',
     'finder:resizeEbay': false,
     parallelListings: 5,
     'finder:visibleScan': false,
@@ -65,6 +66,7 @@ globalThis.EbaySettings = (() => {
     const side = root.getElementById('side');
     const width = root.getElementById('width');
     const display = root.getElementById('display');
+    const listingDisplay = root.getElementById('listing-display');
     const resizeEbay = root.getElementById('resize-ebay');
     const parallel = root.getElementById('parallel');
     const scanMode = root.getElementById('scan-mode');
@@ -188,7 +190,8 @@ globalThis.EbaySettings = (() => {
     side.addEventListener('change', () => save({'finder:side': side.value}));
     width.addEventListener('change', () => save({'finder:widthPercent': Number(width.value)}));
     resizeEbay.addEventListener('change', () => save({'finder:resizeEbay': resizeEbay.checked}));
-    display.addEventListener('change', () => save({'finder:display': display.value}));
+    display.addEventListener('change', () => save({'finder:results:display': display.value}));
+    listingDisplay.addEventListener('change', () => save({'finder:listing:display': listingDisplay.value}));
     scanMode.addEventListener('change', () => {updateScanControls();save({'finder:scanMode':scanMode.value});});
     parallel.addEventListener('input', () => {
       if (scanMode.value === 'visible') return;
@@ -217,7 +220,8 @@ globalThis.EbaySettings = (() => {
       if (!saved) return;
       side.value = defaults['finder:side'];
       showWidth(defaults['finder:widthPercent']);
-      display.value = defaults['finder:display'];
+      display.value = defaults['finder:results:display'];
+      listingDisplay.value = defaults['finder:listing:display'];
       resizeEbay.checked = defaults['finder:resizeEbay'];
       backgroundParallel = defaults.parallelListings;
       scanMode.value = defaults['finder:scanMode'];
@@ -249,14 +253,16 @@ globalThis.EbaySettings = (() => {
     chrome.storage.onChanged.addListener(onChange);
 
     EbayRuntime.local.get([
-      'finder:side', 'finder:widthPercent', 'finder:width', 'finder:display', 'finder:resizeEbay', 'parallelListings', 'finder:visibleScan', 'finder:scanMode', 'finder:cache:maxAge', 'finder:cache:showAll'
+      'finder:side', 'finder:widthPercent', 'finder:width', 'finder:display', 'finder:results:display', 'finder:listing:display', 'finder:resizeEbay', 'parallelListings', 'finder:visibleScan', 'finder:scanMode', 'finder:cache:maxAge', 'finder:cache:showAll'
     ]).then(saved => {
       allCached.checked=saved['finder:cache:showAll']===true;
       cacheAge.value = ['day','week','month','never'].includes(saved['finder:cache:maxAge']) ? saved['finder:cache:maxAge'] : 'week';
       side.value = saved['finder:side'] === 'left' ? 'left' : 'right';
       showWidth(saved['finder:widthPercent'], saved['finder:width']);
       resizeEbay.checked = saved['finder:resizeEbay'] === true;
-      display.value = ['tiles','lines','photos'].includes(saved['finder:display']) ? saved['finder:display'] : 'tiles';
+      const view = key => {const value=saved[key] ?? saved['finder:display'];return ['tiles','lines','photos'].includes(value) ? value : 'tiles';};
+      display.value = view('finder:results:display');
+      listingDisplay.value = view('finder:listing:display');
       scanMode.value = ['background','visible','mixed'].includes(saved['finder:scanMode']) ? saved['finder:scanMode'] : saved['finder:visibleScan'] === true ? 'visible' : 'background';
       const count = saved.parallelListings;
       backgroundParallel = validParallel(count) ? count : defaults.parallelListings;
