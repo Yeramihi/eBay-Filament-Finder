@@ -256,7 +256,7 @@ globalThis.EbaySettings = (() => {
       side.value = saved['finder:side'] === 'left' ? 'left' : 'right';
       showWidth(saved['finder:widthPercent'], saved['finder:width']);
       resizeEbay.checked = saved['finder:resizeEbay'] === true;
-      display.value = saved['finder:display'] === 'lines' ? 'lines' : 'tiles';
+      display.value = ['tiles','lines','photos'].includes(saved['finder:display']) ? saved['finder:display'] : 'tiles';
       scanMode.value = ['background','visible','mixed'].includes(saved['finder:scanMode']) ? saved['finder:scanMode'] : saved['finder:visibleScan'] === true ? 'visible' : 'background';
       const count = saved.parallelListings;
       backgroundParallel = validParallel(count) ? count : defaults.parallelListings;

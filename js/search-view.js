@@ -20,8 +20,18 @@ globalThis.EbaySearchView = (()=>{
     const views=new Map();let disposed=false,frame,width=viewport.clientWidth;
     function schedule() {if(!disposed&&!frame) frame=requestAnimationFrame(()=>{frame=undefined;paint();});}
     function prefix(view) {
-      view.offsets=new Float64Array(view.rows.length+1);
-      for(let index=0;index<view.rows.length;index++) view.offsets[index+1]=view.offsets[index]+(view.heights.get(view.rows[index]) || view.estimate);
+      const photos=view.container.classList.contains('photos-only');
+      view.columns=photos ? Math.max(1,Math.floor(((view.container.clientWidth||viewport.clientWidth)-16+8)/104)) : 1;
+      const bands=Math.ceil(view.rows.length/view.columns);
+      view.offsets=new Float64Array(bands+1);
+      for(let band=0;band<bands;band++) {
+        let height=0;
+        for(let column=0;column<view.columns;column++) {
+          const row=view.rows[band*view.columns+column];
+          if(row) height=Math.max(height,view.heights.get(row)||view.estimate);
+        }
+        view.offsets[band+1]=view.offsets[band]+height;
+      }
     }
     function indexAt(offsets,position) {
       let low=0,high=offsets.length-1;
@@ -42,8 +52,10 @@ globalThis.EbaySearchView = (()=>{
         const visibleTop=Math.max(0,bounds.top-rect.top-8);
         const from=Math.max(0,Math.min(visibleTop-height/2,total-2*height));
         const intersects=rect.top<bounds.bottom&&rect.top+total+16>bounds.top;
-        const first=intersects ? indexAt(view.offsets,from) : 0;
-        const last=intersects ? Math.min(view.rows.length,indexAt(view.offsets,Math.min(total,from+2*height))+1) : 0;
+        const firstBand=intersects ? indexAt(view.offsets,from) : 0;
+        const first=firstBand*view.columns;
+        const lastBand=intersects ? Math.min(view.offsets.length-1,indexAt(view.offsets,Math.min(total,from+2*height))+1) : 0;
+        const last=Math.min(view.rows.length,lastBand*view.columns);
         const next=new Map(),nodes=[],listingActions=new Set();
         for(let index=first;index<last;index++) {
           const row=view.rows[index],entry=view.nodes.get(row)||makeEntry(row);
@@ -54,8 +66,8 @@ globalThis.EbaySearchView = (()=>{
         const changed=next.size!==view.nodes.size||[...next.keys()].some(row=>!view.nodes.has(row));
         if(changed) globalThis.EbayCards?.closeTooltip();
         view.nodes=next;
-        view.top.style.height=`${view.offsets[first] || 0}px`;
-        view.bottom.style.height=`${Math.max(0,total-(view.offsets[last] || 0))}px`;
+        view.top.style.height=`${view.offsets[firstBand] || 0}px`;
+        view.bottom.style.height=`${Math.max(0,total-(view.offsets[lastBand] || 0))}px`;
         if(changed||view.dirty) {view.container.replaceChildren(view.top,...nodes,view.bottom);view.dirty=false;}
         if(!nodes.length) continue;
         const anchor=indexAt(view.offsets,visibleTop),oldAnchor=view.offsets[anchor];
@@ -68,8 +80,8 @@ globalThis.EbaySearchView = (()=>{
         if(measured) {
           prefix(view);
           if(rect.top<bounds.top) viewport.scrollTop+=view.offsets[anchor]-oldAnchor;
-          view.top.style.height=`${view.offsets[first]}px`;
-          view.bottom.style.height=`${Math.max(0,view.offsets.at(-1)-view.offsets[last])}px`;
+          view.top.style.height=`${view.offsets[firstBand]}px`;
+          view.bottom.style.height=`${Math.max(0,view.offsets.at(-1)-view.offsets[lastBand])}px`;
           schedule();
         }
       }

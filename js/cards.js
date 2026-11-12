@@ -41,6 +41,17 @@ globalThis.EbayCards = (() => {
     .finder-entries.finder-virtual-list{display:block;overflow-anchor:none}
     .finder-virtual-list>.finder-entry{margin:0 0 8px}
     .finder-virtual-spacer{display:block;width:1px;pointer-events:none}
+    .photo-info,.finder-photo-fallback{display:none}
+    .finder-entries.photos-only,.finder-entries.finder-virtual-list.photos-only{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+    .finder-entries.photos-only>.finder-entry{position:relative;box-sizing:border-box;aspect-ratio:1;padding:4px;min-height:0;overflow:hidden;margin:0}
+    .photos-only>.finder-entry .listing-content{display:block;height:100%}
+    .photos-only>.finder-entry img{display:block;width:100%;height:100%;object-fit:contain;float:none;margin:0;border-radius:4px}
+    .photos-only>.finder-entry .field,.photos-only>.finder-entry .line-label,.photos-only>.finder-entry .listing-cache-actions,.photos-only>.finder-entry .hidden-until{display:none!important}
+    .photos-only>.finder-entry>.photo-info{position:absolute;display:inline-flex;align-items:center;justify-content:center;top:5px;right:5px;width:24px;height:24px;padding:0;border:1px solid #355779;border-radius:50%;background:#fffffff2;color:#17365d;font:18px/1 system-ui;cursor:help;box-shadow:0 1px 4px #0002}
+    .photos-only>.finder-entry::after{display:none}
+    .photos-only>.finder-virtual-spacer{grid-column:1/-1}
+    .finder-photo-details{box-sizing:border-box;position:fixed;inset:auto;margin:0;width:380px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);padding:10px;border:1px solid #aab7c7;border-radius:10px;background:white;color:#18212f;box-shadow:0 6px 24px #17365d44;overflow:auto;overscroll-behavior:contain;font:13px/1.5 system-ui}
+    .photo-details-close{display:block;margin:0 0 8px auto;padding:4px 9px;border:1px solid #aab7c7;border-radius:5px;background:#f4f7fb;color:#17365d;font:12px system-ui;cursor:pointer}
     .finder-entry::after{content:'';display:block;clear:both}.finder-entries.lines{gap:2px;padding:6px 8px}.finder-entries.lines .finder-entry{min-height:0;padding:3px 0;border:0;border-radius:0;background:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}.finder-entries.lines a.finder-entry{color:#174b83!important;text-decoration:underline!important;text-underline-offset:2px}.finder-entries.lines a.finder-entry:hover{background:transparent;color:#0f3158!important}.finder-entry .line-label{display:none}.finder-entries.lines .field{display:none}.finder-entries.lines .line-label{display:inline;font-weight:400}.finder-entries.lines img{display:none}.finder-entries.lines .finder-entry::after{display:none}
   `;
   function emptyState({scanning=false,outOfStock=false}={}) {
@@ -134,8 +145,58 @@ globalThis.EbayCards = (() => {
       event.preventDefault();event.stopPropagation();show();
     });
   }
+  let activePhotoPanel;
+  const photoAverages=new WeakMap(),photoHidden=new WeakMap();
+  function closePhotoPanel() {activePhotoPanel?.close();}
+  function photoCard(card,row,format,options) {
+    if(options.photoDetail) return card;
+    if(card.tagName==='A') {
+      const wrapper=document.createElement('article');wrapper.className=card.className;
+      card.className='listing-content';wrapper.append(card);card=wrapper;
+    }
+    const link=card.querySelector('.listing-content');
+    if(link) link.setAttribute('aria-label',`Open ${row.title||'listing'}: ${row.label||''}`);
+    if(!card.querySelector('img')) {
+      const fallback=document.createElement('img');fallback.className='finder-photo-fallback';fallback.src=chrome.runtime.getURL('images/icons/icon-48.png');fallback.alt='';card.prepend(fallback);
+    }
+    const info=document.createElement('button');info.type='button';info.className='photo-info';info.textContent='ⓘ';
+    info.setAttribute('aria-label',`Show details: ${row.label||row.title||'listing'}`);info.setAttribute('aria-haspopup','dialog');info.setAttribute('aria-expanded','false');
+    let returningFocus=false;
+    function show() {
+      if(activePhotoPanel?.target===card) return;
+      closePhotoPanel();activeTooltip?.();
+      const root=card.getRootNode(),popup=document.createElement('div');popup.className='finder-photo-details';popup.setAttribute('popover','manual');popup.setAttribute('role','dialog');popup.setAttribute('aria-label','Listing details and price calculations');
+      const close=document.createElement('button');close.type='button';close.className='photo-details-close';close.textContent='Close';
+      const details=entry(row,format,{...options,photoDetail:true});
+      const average=photoAverages.get(card);if(average) updateAverage(details,average.average,average.format,average.sortKey);
+      updateHidden(details,photoHidden.get(card)||0);
+      const sourceButtons=card.querySelectorAll('.listing-cache-actions button'),detailButtons=details.querySelectorAll('.listing-cache-actions button');
+      detailButtons.forEach((button,index)=>{button.disabled=sourceButtons[index]?.disabled||false;});
+      popup.append(close,details);root.append(popup);popup.showPopover();info.setAttribute('aria-expanded','true');
+      const rect=info.getBoundingClientRect(),bounds=popup.getBoundingClientRect();
+      popup.style.left=`${Math.max(8,Math.min(rect.left,innerWidth-bounds.width-8))}px`;
+      popup.style.top=`${Math.max(8,Math.min(rect.bottom+6,innerHeight-bounds.height-8))}px`;
+      function hide() {
+        activeTooltip?.();popup.remove();info.setAttribute('aria-expanded','false');
+        root.removeEventListener('pointerdown',outside,true);root.removeEventListener('keydown',escape);window.removeEventListener('resize',hide);
+        if(activePhotoPanel?.target===card) activePhotoPanel=undefined;
+      }
+      function outside(event) {
+        const path=event.composedPath();
+        if(!path.includes(info)&&!path.includes(popup)&&!path.some(node=>node.classList?.contains('finder-tooltip'))) hide();
+      }
+      function escape(event) {if(event.key==='Escape'&&!event.defaultPrevented) {event.preventDefault();event.stopPropagation();hide();returningFocus=true;info.focus();returningFocus=false;}}
+      close.addEventListener('click',()=>{hide();returningFocus=true;info.focus();returningFocus=false;});root.addEventListener('pointerdown',outside,true);root.addEventListener('keydown',escape);window.addEventListener('resize',hide);
+      activePhotoPanel={target:card,popup,close:hide};
+    }
+    info.addEventListener('pointerenter',show);info.addEventListener('focus',()=>{if(!returningFocus)show();});
+    info.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();show();activePhotoPanel?.popup.querySelector('.photo-details-close')?.focus();});
+    card.append(info);return card;
+  }
+  globalThis.EbayRuntime?.onDispose?.(closePhotoPanel);
   const averageStates = new WeakMap();
   function updateAverage(item,average,format,sortKey) {
+    photoAverages.set(item,{average,format,sortKey});
     const signature = JSON.stringify(average ?? null);
     if (averageStates.get(item) === signature) return;
     averageStates.set(item,signature);
@@ -230,6 +291,7 @@ globalThis.EbayCards = (() => {
     function showDisplay(value) {
       for (const list of [entries, unavailableEntries,...root.querySelectorAll('.finder-hidden .finder-entries')]) {
         list.classList.toggle('lines', value === 'lines');
+        list.classList.toggle('photos-only',value==='photos');
       }
     }
     let displayChanged = false;
@@ -261,7 +323,8 @@ globalThis.EbayCards = (() => {
       for(const field of root.querySelectorAll('.finder-entry [data-sort-field]'))field.classList.toggle('sort-active',field.dataset.sortField===key || field.dataset.sortAlias===key);
     };
   }
-  function entry(row,format,{search=false,url,select,clearCache,refresh,hideListing}={}){
+  function entry(row,format,{search=false,url,select,clearCache,refresh,hideListing,photoDetail=false}={}){
+    const options={search,url,select,clearCache,refresh,hideListing,photoDetail};
     if(row.hiddenPreview && hideListing) {
       const item=document.createElement('article');item.className='finder-entry';
       const link=document.createElement('a');link.className='listing-content';link.href=row.url;
@@ -272,7 +335,7 @@ globalThis.EbayCards = (() => {
       actions.append(button);
       const note=document.createElement('small');note.className='hidden-until';
       item.append(link,actions,note);
-      return item;
+      return photoCard(item,row,format,options);
     }
     const clickable=search || (!row.singleItem&&!row.outOfStock);
     const item=document.createElement(clickable?'a':'article');item.className='finder-entry';
@@ -339,11 +402,12 @@ globalThis.EbayCards = (() => {
       }
       const until=document.createElement('small');until.className='hidden-until';until.hidden=true;
       wrapper.append(item,actions,until);
-      return wrapper;
+      return photoCard(wrapper,row,format,options);
     }
-    return item;
+    return photoCard(item,row,format,options);
   }
   function updateHidden(entry,expiresAt) {
+    photoHidden.set(entry,expiresAt);
     const button=entry.querySelector('[data-action="visibility"]');
     if(!button) return;
     const label=expiresAt ? 'Unhide' : 'Hide from results';
@@ -355,7 +419,7 @@ globalThis.EbayCards = (() => {
     if(note) {note.hidden=!expiresAt;note.textContent=expiresAt ? `Hidden until ${new Date(expiresAt).toLocaleString()}` : '';}
   }
   function showEntries(root, entries, outOfStock, hiddenEntries=[]) {
-    activeTooltip?.();
+    activeTooltip?.();closePhotoPanel();
 
     root.querySelector('.finder-entries').replaceChildren(...entries);
     const hidden=root.querySelector('.finder-hidden');
@@ -375,5 +439,5 @@ globalThis.EbayCards = (() => {
     root.querySelector('.finder-toggle').setAttribute('aria-expanded', String(expanded));
   }
 
-  return {closeTooltip:()=>activeTooltip?.(),emptyState, controls, entry, updateHidden, showEntries, setFiltersExpanded, tooltip, updateAverage};
+  return {closeTooltip:()=>{activeTooltip?.();closePhotoPanel();},emptyState, controls, entry, updateHidden, showEntries, setFiltersExpanded, tooltip, updateAverage};
 })();
