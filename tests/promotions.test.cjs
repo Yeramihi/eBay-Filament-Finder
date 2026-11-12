@@ -65,3 +65,34 @@ test('legacy percentage and fixed vouchers still work with missing or explicit c
   const coupon=api.getCoupon(html('£5.00 off with code FIVE'));
   assert.equal(api.spoolEstimate(row(10,{title:'Buy 5 Pay 3',coupon})).amount,5);
 });
+
+test('percentage coupon cap corrects the Flashforge 699 price to 624',()=>{
+  const html='<main id=mainContent><div class=x-coupon data-testid=x-coupon><span>20% off with code TREATMORE20</span><span>Ends 18 Nov • Max £75.00</span></div></main>';
+  const coupon=api.getCoupon(html),priced=row(699,{coupon});
+  assert.equal(coupon.maxSaving,75);assert.equal(coupon.capCurrency,'GBP');
+  assert.equal(api.totalEstimate(priced).amount,624);assert.equal(api.spoolEstimate(priced).amount,624);
+  assert.equal(api.totalEstimate(priced).saving,75);assert.match(api.couponLabel(coupon),/max £75.00/);
+});
+test('caps are applied once per multi-buy order and consistently in averages',()=>{
+  const coupon={percent:20,code:'CAP75',maxSaving:75,capCurrency:'GBP'};
+  const priced=row(100,{title:'Buy 5 Pay 3',coupon});
+  assert.equal(api.spoolEstimate(priced).amount,48); // subtotal 300, saving 60 below cap
+  const expensive=row(200,{title:'Buy 5 Pay 3',coupon});
+  assert.equal(api.spoolEstimate(expensive).amount,105); // subtotal 600, saving capped at 75
+  assert.equal(api.matchingAverage([expensive]).amount,105);
+  assert.match(api.spoolTooltip(expensive,api.spoolEstimate(expensive)),/once per order, not per item/);
+});
+test('coupon cap handles smaller purchases, postage, fixed discounts and currency safety',()=>{
+  const capped={percent:20,maxSaving:75,capCurrency:'GBP'};
+  assert.equal(api.totalEstimate(row(100,{coupon:capped})).amount,80);
+  assert.equal(api.totalEstimate(row(699,{coupon:capped,postage:10,total:709})).amount,634);
+  assert.equal(api.totalEstimate(row(100,{coupon:{amount:20,currency:'GBP',maxSaving:10,capCurrency:'GBP'}})).amount,90);
+  assert.equal(api.totalEstimate(row(699,{coupon:{...capped,capCurrency:'USD'}})).coupon,null);
+});
+test('DOM cap parsing agrees with worker markup and ambiguous caps are rejected',()=>{
+  const text='20% off with code TREATMORE20 Ends 18 Nov • Max £75.00';
+  const dom={querySelectorAll:selector=>selector.includes('x-coupon')?[{textContent:text}]:[]};
+  assert.equal(api.getCoupon(dom).maxSaving,75);
+  assert.equal(api.getCoupon(subtitle('20% off Code: SAVE Maximum discount: £25')).maxSaving,25);
+  assert.equal(api.getCoupon(subtitle('20% off Code: SAVE Max unknown')),null);
+});

@@ -235,17 +235,19 @@ globalThis.EbayVariants = (() => {
   function applicableCoupon(row) {
     const coupon = row.coupon;
     if(!coupon) return null;
+    if(coupon.maxSaving!==undefined&&(!Number.isFinite(coupon.maxSaving)||coupon.maxSaving<=0||coupon.capCurrency!==row.currency)) return null;
     if(Number.isFinite(coupon.percent) && coupon.percent>0 && coupon.percent<100) return coupon;
     if(Number.isFinite(coupon.amount) && coupon.amount>0 && coupon.currency===row.currency) return coupon;
     return null;
   }
   function couponLabel(coupon) {
-    return Number.isFinite(coupon.percent) ? `${coupon.percent}%` : formatCurrency(coupon.amount,coupon.currency);
+    const label=Number.isFinite(coupon.percent) ? `${coupon.percent}%` : formatCurrency(coupon.amount,coupon.currency);
+    return label+(Number.isFinite(coupon.maxSaving) ? ` (max ${formatCurrency(coupon.maxSaving,coupon.capCurrency)})` : '');
   }
   function couponSaving(coupon,subtotal) {
     if(!coupon || !Number.isFinite(subtotal) || subtotal<=0) return 0;
     // A fixed-value voucher is deducted once per order, never once per unit.
-    return Math.min(subtotal,Number.isFinite(coupon.percent) ? subtotal*coupon.percent/100 : coupon.amount);
+    return Math.min(subtotal,coupon.maxSaving??Infinity,Number.isFinite(coupon.percent) ? subtotal*coupon.percent/100 : coupon.amount);
   }
   function totalEstimate(row) {
     const coupon = applicableCoupon(row);
@@ -340,6 +342,13 @@ globalThis.EbayVariants = (() => {
       const value=Number(fixed[0][2].replace(/,/g,''));
       if(!(value>0&&Number.isFinite(value))) return null;
       coupon={amount:value,currency:promotionCurrency(fixed[0][1]),code:fixed[0][3]};
+    }
+    const cap=/\bmax(?:imum)?(?:\s+(?:saving|discount))?\.?\s*:?\s*(GBP|US\s*\$|USD|EUR|£|€|\$)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/i.exec(text);
+    if(/\bmax(?:imum)?\b/i.test(text)&&!cap) return null;
+    if(cap) {
+      const maxSaving=Number(cap[2].replace(/,/g,''));
+      if(!(maxSaving>0&&Number.isFinite(maxSaving))) return null;
+      coupon={...coupon,maxSaving,capCurrency:promotionCurrency(cap[1])};
     }
     return subtitle ? {...coupon,source:'subtitle',conditional:true} : coupon;
   }
@@ -465,7 +474,7 @@ globalThis.EbayVariants = (() => {
       ? `${estimate.offer.description}: ${estimate.offer.formula}. Requires purchase of ${estimate.offer.spools} ${estimate.offer.identical ? 'identical items (same variant; variants cannot be mixed)' : 'items from this listing'}. Assumes all items have this price.`
       : 'No unambiguous supported offer recognised; showing the regular total, including recognised postage.';
     const offerNote=estimate.offer?.source==='banner' ? `\nOffer shown in eBay’s listing banner.${estimate.offer.code ? ` Enter code ${estimate.offer.code} at checkout.` : ''}${estimate.offer.maxSaving!==undefined ? ` Maximum saving: ${formatCurrency(estimate.offer.maxSaving,estimate.offer.currency)} per order.` : ''} Assumes equally priced eligible items; check the offer terms for mixing variants, which items are free and eligibility.${estimate.offer.termsUrl ? ` Terms: ${estimate.offer.termsUrl}` : ''}${row.coupon&&estimate.offer.code ? ' A separate coupon is not stacked with this code-required offer.' : ''}` : '';
-    const couponNote = estimate.coupon ? `\nIncludes ${estimate.coupon.source==='subtitle' ? 'seller-advertised' : 'eBay'} coupon: ${couponLabel(estimate.coupon)} off the item subtotal after multi-buy discounts, before postage.${Number.isFinite(estimate.coupon.amount) ? ' The fixed voucher is deducted once from the order total, not from every item.' : ''}${estimate.coupon.code ? ` Code: ${estimate.coupon.code}.` : ''} Check the coupon details on the listing page for maximum savings, minimum spend, expiry, eligibility and whether offers combine. Enter the code at checkout and verify manually.` : '';
+    const couponNote = estimate.coupon ? `\nIncludes ${estimate.coupon.source==='subtitle' ? 'seller-advertised' : 'eBay'} coupon: ${couponLabel(estimate.coupon)} off the item subtotal after multi-buy discounts, before postage.${Number.isFinite(estimate.coupon.maxSaving) ? ` Maximum coupon saving: ${formatCurrency(estimate.coupon.maxSaving,estimate.coupon.capCurrency)} once per order, not per item.` : ''}${Number.isFinite(estimate.coupon.amount) ? ' The fixed voucher is deducted once from the order total, not from every item.' : ''}${estimate.coupon.code ? ` Code: ${estimate.coupon.code}.` : ''} Check the coupon details on the listing page for maximum savings, minimum spend, expiry, eligibility and whether offers combine. Enter the code at checkout and verify manually.` : '';
     return `Experimental estimate — check the offer, required quantity, eligibility, spool size and delivery manually before buying.\n${estimate.coupon && !estimate.offer ? 'One item at the regular price before coupon.' : calculation}${offerNote}${couponNote}\nRecognised postage is added once after discounts, then divided across the offer quantity. Delivery charges for a multi-item order may differ.`;
   }
 
@@ -514,7 +523,7 @@ globalThis.EbayVariants = (() => {
     const compatible = offer && estimates.every(({estimate:e}) => e.offer &&
       e.offer.spools === offer.spools && e.offer.identical === offer.identical &&
       e.offer.description === offer.description && e.offer.code===offer.code && e.offer.maxSaving===offer.maxSaving && e.offer.free===offer.free && e.coupon?.percent === first.coupon?.percent &&
-      e.coupon?.amount === first.coupon?.amount && e.coupon?.currency === first.coupon?.currency && e.coupon?.code === first.coupon?.code &&
+      e.coupon?.maxSaving===first.coupon?.maxSaving && e.coupon?.capCurrency===first.coupon?.capCurrency && e.coupon?.amount === first.coupon?.amount && e.coupon?.currency === first.coupon?.currency && e.coupon?.code === first.coupon?.code &&
       Number.isFinite(e.amount));
     const priced = compatible ? estimates.map(({row,estimate}) => {
       const quantity = offer.spools;
