@@ -14,7 +14,7 @@ Changes include automatic sidebar opening from listing titles, manual results fi
 
 A persistent listing cache loads matching saved results on search pages and skips valid entries during scans. Settings allow retention of 1 day, 1 week (default), 1 month (30 days), or indefinitely. Cached results show retrieval timestamps; opening a listing refreshes its saved data. Per-listing Clear cache and Refresh controls act on all variants of that listing. Hide from results hides an entire listing for 1 day, 1 week or 30 days (default), across searches and browser restarts. A collapsed Hidden section between Results and Out of stock shows one tile per hidden listing, its expiry and an Unhide button; hidden listings remain accessible there regardless of the current variant filter. Hiding is independent of cache age and never deletes listing data.
 
-The bundled guide has not yet been updated for scanning modes and persistent caching. Automated regression tests and live Chrome reload/cache/filter/scroll checks have now been run following the user’s later authorization to test. This branch is for review and manual testing, not a published release.
+The bundled guide and What’s New cover the complete 1.4 release, including scanning modes, persistent caching, performance, price calculations and current screenshots. Automated regression tests and live Chrome reload/cache/filter/scroll checks have now been run following the user’s later authorization to test. This branch is for review and manual testing, not a published release.
 
 ## Install from source
 
@@ -61,3 +61,5 @@ Settings → Results layout → Photos only displays the existing sorted and fil
 Search results view and Listing page view are configured independently in Settings. Each page type also remembers its own sort field and direction. Existing shared view preferences remain the fallback until a page-specific view is saved.
 
 Listing photos keep a contained placeholder until their own image request succeeds. Failed or invalid image URLs retain that placeholder rather than leaving an empty slot. Grid window updates compare row order as well as membership, so reshuffling the same visible rows updates their DOM order.
+
+Release artifacts: `WHATS-NEW-1.4.txt` contains plain-text submission notes. The submission ZIP contains the version 1.4 manifest at its root and bundled extension scripts, styles, pages and images; it excludes tests, Git data, development files and earlier ZIPs.

@@ -22,7 +22,24 @@ test('toolbar context menu and sidebar message both open the bundled guide',asyn
 });
 test('guide contains all sixteen photographed sort options and their assets',()=>{
   const html=fs.readFileSync(`${__dirname}/../html/guide.html`,'utf8');
-  const screenshots=[...html.matchAll(/<img src="\.\.\/images\/guide\/((?:search|listing)-[^"]+\.jpg)"/g)].map(m=>m[1]);
+  const screenshots=[...html.matchAll(/<img src="\.\.\/images\/guide\/((?:search|listing)-(?:title|label|total|spool|average)-(?:asc|desc)\.jpg)"/g)].map(m=>m[1]);
   assert.equal(screenshots.length,16);assert.equal(new Set(screenshots).size,16);
   for(const filename of screenshots)assert.ok(fs.statSync(`${__dirname}/../images/guide/${filename}`).size>1000);
+});
+
+test('release pages link only to bundled images and valid local anchors',()=>{
+  for(const page of ['guide','whats-new']) {
+    const html=fs.readFileSync(`${__dirname}/../html/${page}.html`,'utf8');
+    for(const [,path] of html.matchAll(/(?:src|href)="(\.\.\/[^"#]+)"/g))assert.ok(fs.existsSync(`${__dirname}/../html/${path}`),path);
+    const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
+    for(const [,id] of html.matchAll(/href="#([^"]+)"/g))assert.ok(ids.has(id),`${page}: ${id}`);
+    assert.ok(!/<script|onerror=|onclick=/i.test(html),'documentation is static and bundled');
+  }
+});
+test('guide covers current modes, cache, separate views, coupons and full-data filtering',()=>{
+  const html=fs.readFileSync(`${__dirname}/../html/guide.html`,'utf8');
+  for(const id of ['modes','cache','views','prices','sorting','settings','performance'])assert.ok(html.includes(`id="${id}"`));
+  for(const name of ['Background','Visible tabs','Mixed','Always show all cached data','Purge all cache','Clear remembered missing listings','Search results view','Listing page view','Never dropped','Retry cache save'])assert.ok(html.includes(name),name);
+  assert.ok(html.includes('not copied into the filters'));assert.ok(html.includes('all loaded in-memory rows'));
+  assert.ok(!html.includes('before offers, coupons and postage'));assert.ok(!html.includes('copies your current eBay search'));
 });

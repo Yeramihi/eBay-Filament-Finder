@@ -1,119 +1,24 @@
 {
-  "capturedOn": "2026-11-09",
-  "searchURL": "https://www.ebay.co.uk/sch/i.html?_nkw=silk+tpu&_sacat=0&_from=R40&_pgn=3",
-  "listingURL": "https://www.ebay.co.uk/itm/396793856846?var=665258192398",
-  "captures": [
-    {
-      "mode": "search",
-      "key": "title",
-      "label": "Listing",
-      "ascending": true,
-      "filename": "search-title-asc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "title",
-      "label": "Listing",
-      "ascending": false,
-      "filename": "search-title-desc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "label",
-      "label": "Variant",
-      "ascending": true,
-      "filename": "search-label-asc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "label",
-      "label": "Variant",
-      "ascending": false,
-      "filename": "search-label-desc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "total",
-      "label": "Individual purchase",
-      "ascending": true,
-      "filename": "search-total-asc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "total",
-      "label": "Individual purchase",
-      "ascending": false,
-      "filename": "search-total-desc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "spool",
-      "label": "Bulk purchase*",
-      "ascending": true,
-      "filename": "search-spool-asc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "spool",
-      "label": "Bulk purchase*",
-      "ascending": false,
-      "filename": "search-spool-desc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "average",
-      "label": "Mixed bulk average",
-      "ascending": true,
-      "filename": "search-average-asc.jpg"
-    },
-    {
-      "mode": "search",
-      "key": "average",
-      "label": "Mixed bulk average",
-      "ascending": false,
-      "filename": "search-average-desc.jpg"
-    },
-    {
-      "mode": "listing",
-      "key": "label",
-      "label": "Variant",
-      "ascending": true,
-      "filename": "listing-label-asc.jpg"
-    },
-    {
-      "mode": "listing",
-      "key": "label",
-      "label": "Variant",
-      "ascending": false,
-      "filename": "listing-label-desc.jpg"
-    },
-    {
-      "mode": "listing",
-      "key": "total",
-      "label": "Individual purchase",
-      "ascending": true,
-      "filename": "listing-total-asc.jpg"
-    },
-    {
-      "mode": "listing",
-      "key": "total",
-      "label": "Individual purchase",
-      "ascending": false,
-      "filename": "listing-total-desc.jpg"
-    },
-    {
-      "mode": "listing",
-      "key": "spool",
-      "label": "Bulk purchase*",
-      "ascending": true,
-      "filename": "listing-spool-asc.jpg"
-    },
-    {
-      "mode": "listing",
-      "key": "spool",
-      "label": "Bulk purchase*",
-      "ascending": false,
-      "filename": "listing-spool-desc.jpg"
-    }
+  "capturedDate": "2026-11-12",
+  "sourceSearch": "https://www.ebay.co.uk/sch/i.html?_nkw=asa+filament&_sacat=0&_from=R40&_pgn=1",
+  "sourceListing": "https://www.ebay.co.uk/itm/406816379184?var=677042768340",
+  "method": "Actual extension UI in Chrome; cropped to the complete finder or Settings. No generated result images.",
+  "sortingScreenshots": [
+    "search-title-asc.jpg",
+    "search-title-desc.jpg",
+    "search-label-asc.jpg",
+    "search-label-desc.jpg",
+    "search-total-asc.jpg",
+    "search-total-desc.jpg",
+    "search-spool-asc.jpg",
+    "search-spool-desc.jpg",
+    "search-average-asc.jpg",
+    "search-average-desc.jpg",
+    "listing-label-asc.jpg",
+    "listing-label-desc.jpg",
+    "listing-total-asc.jpg",
+    "listing-total-desc.jpg",
+    "listing-spool-asc.jpg",
+    "listing-spool-desc.jpg"
   ]
 }
