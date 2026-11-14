@@ -1,7 +1,29 @@
-(() => {
+(async () => {
   "use strict";
 
+  // The universal scan reader owns extension-created scan tabs. Do not mount
+  // the normal listing dock or alter eBay's page width in those tabs.
+  try { if ((await EbayRuntime.sendMessage({type:'visible-scan-context'}))?.scan) return; }
+  catch { /* Normal browsing remains available if the worker is unavailable. */ }
   const listingUrl = location.href;
+  const pageOpenedAt=Number.isFinite(performance.timeOrigin) ? performance.timeOrigin : Date.now();
+  let listingMissing=false;
+  async function removeMissingListing() {
+    if(!EbayVariants.isMissingListing(document)) return false;
+    listingMissing=true;
+    const response=await EbayRuntime.sendMessage({type:'finder-listing-missing'});
+    if(!response?.removed) throw new Error(response?.error || 'Could not remove the missing listing from cache.');
+    return true;
+  }
+  try {if(await removeMissingListing()) return;} catch(error) {listingMissing=false;EbayRuntime.report(error);}
+  let comparisonBaseline;
+  try {
+    const id=location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
+    const response=id&&await EbayRuntime.sendMessage({type:'finder-cache-read',urls:[location.origin+'/itm/'+id]});
+    if(response?.error) throw new Error(response.error);
+    const cached=response?.items?.[0];
+    comparisonBaseline={rows:cached?.rows || [],fetchedAt:cached?.rows?.[0]?.fetchedAt};
+  } catch { /* The worker can still compare against the current cache. */ }
   const PANEL_ID = "ebay-variant-prices";
   if (document.getElementById(PANEL_ID)) return;
 
@@ -123,7 +145,7 @@
           <div class="filter">
             <input
               type="text"
-              placeholder="Filter variants (all words)"
+
               aria-label="Filter variant names: all words, in any order"
               autocomplete="off"
               spellcheck="false"
@@ -132,13 +154,27 @@
           <button class="apply-filters finder-button" type="button">Apply filters</button>
           <div class="status" role="status" aria-live="polite"></div>
         </div>
-        <div class="finder-results"><div class="finder-entries"></div></div>
+        <div class="finder-results"><div class="price-change-status status error" role="alert" hidden></div><div class="cache-status status" role="status" aria-live="polite"><span></span> <button type="button" class="cache-retry" hidden>Retry cache save</button></div><div class="finder-entries"></div></div>
       </section>
     `;
 
+    const priceStatus=root.querySelector('.price-change-status');
+    updatePriceNotice=(message,tone='mixed')=>{priceStatus.textContent=message;priceStatus.hidden=!message;priceStatus.style.color=priceTones[tone].text;};
+    const cacheStatus=root.querySelector('.cache-status');
+    const cacheRetry=root.querySelector('.cache-retry');
+    updateCacheNotice=(message,error=false)=>{
+      cacheStatus.querySelector('span').textContent=message;
+      cacheStatus.classList.toggle('error',error);
+      cacheRetry.hidden=!error;
+    };
+    cacheRetry.addEventListener('click',()=>{
+      savedSignature=undefined;
+      cacheCandidate=undefined;
+      queueCacheSave(readListing());
+    });
     const input = root.querySelector("input");
     const status = root.querySelector(".status");
-    const syncSort = EbayCards.controls(root,[['label','Variant'],['total','Total'],['spool','Price per item*']],(key,direction)=>{sortTouched=true;sortKey=key;ascending=direction;EbayDock.saveSort(key,direction);render();});
+    const syncSort = EbayCards.controls(root,[['label','Variant'],['total','Individual purchase'],['spool','Bulk purchase*']],(key,direction)=>{sortTouched=true;sortKey=key;ascending=direction;EbayDock.saveSort(key,direction);render();});
     const collator = new Intl.Collator(undefined, {
       sensitivity: "base",
       numeric: true
@@ -241,23 +277,138 @@
     };
   }
 
-  function readListing() {
-    const html=document.documentElement.outerHTML;
-    const scripts=Array.from(document.scripts,script=>script.textContent||'');
-    const variants=EbayVariants.getRows(scripts);
-    const itemId=location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
-    const rows=variants.length?variants:EbayVariants.getSingleItemRows(html,itemId?`${location.origin}/itm/${itemId}`:location.href);
-    const title=document.querySelector('h1.x-item-title__mainTitle, h1')?.textContent?.trim()||'';
-    const image=document.querySelector('meta[property="og:image"]')?.content||document.querySelector('.ux-image-carousel-item img')?.src;
-    const coupon=EbayVariants.getCoupon(document);
-    return EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,scripts),EbayVariants.getPostage(html)).map(row=>({...row,title,coupon,image:row.image||image}));
+  const readListing = () => EbayListingData();
+  let updateRows, scheduled, savedSignature, cacheCandidate, cacheSaveTimer, cacheSaving=false;
+  let updateCacheNotice=()=>{}, updatePriceNotice=()=>{};
+  let openedVariantId=new URL(listingUrl).searchParams.get('var');
+  const reportedPriceChanges=new Map();
+  let priceWarning, closedPriceWarning='';
+  const priceTones={down:{text:'#166534',border:'#15803d',background:'#f0fdf4'},up:{text:'#b91c1c',border:'#b4232c',background:'#fff1f0'},mixed:{text:'#111111',border:'#333333',background:'#f5f5f5'}};
+  function priceDirection(changes) {
+    let up=false,down=false,unknown=false;
+    for(const change of changes) {
+      if(change.before.currency!==change.after.currency) {unknown=true;continue;}
+      for(const field of ['item','postage','individual','bulk']) {
+        const before=change.before[field],after=change.after[field];
+        if(!Number.isFinite(before)||!Number.isFinite(after)) continue;
+        const difference=Math.round(after*100)-Math.round(before*100);
+        if(difference>0) up=true;
+        if(difference<0) down=true;
+      }
+    }
+    return unknown||up&&down ? 'mixed' : up ? 'up' : down ? 'down' : 'mixed';
   }
-  let updateRows, scheduled;
-  function refresh(){const rows=readListing();if(updateRows)updateRows(rows);else if(rows.length)updateRows=mount(rows);}
+  function money(value,currency) {
+    if(!Number.isFinite(value)) return 'unknown';
+    try{return EbayVariants.formatCurrency(value,currency);}catch{return `${value.toFixed(2)} ${currency || ''}`;}
+  }
+  function priceChangeText(change) {
+    const parts=[];
+    for(const [field,label] of [['item','Item price'],['postage','Postage'],['individual','Individual purchase'],['bulk','Bulk purchase']]) {
+      const before=change.before[field], after=change.after[field];
+      if(Number.isFinite(before)&&Number.isFinite(after)&&(Math.round(before*100)!==Math.round(after*100)||change.before.currency!==change.after.currency)) {
+        parts.push(`${label}: ${money(before,change.before.currency)} → ${money(after,change.after.currency)}`);
+      }
+    }
+    return parts.join('; ');
+  }
+  function updatePriceWarnings(rows) {
+    if(!reportedPriceChanges.size) {updatePriceNotice('');priceWarning?.host.remove();priceWarning=undefined;return;}
+    if(!openedVariantId && !rows.some(row=>row.singleItem)) {
+      const controls=[...document.querySelectorAll('.x-sku button[aria-haspopup="listbox"]')];
+      const selected=controls.length&&rows.find(row=>row.values?.length===controls.length && row.values.every((value,index)=>normalise(value)===normalise(controls[index].value)));
+      if(selected?.id!=null) openedVariantId=String(selected.id);
+    }
+    const openedKey=rows.some(row=>row.singleItem) ? 'single' : openedVariantId ? 'variant:'+openedVariantId : null;
+    const change=openedKey&&reportedPriceChanges.get(openedKey);
+    const others=[...reportedPriceChanges.values()].filter(item=>item.id!==openedKey);
+    updatePriceNotice(others.length ? `${others.length} ${openedKey ? 'other ' : ''}variant${others.length===1?'':'s'} with changed prices.` : '',priceDirection([...reportedPriceChanges.values()]));
+    if(!change) return;
+    const direction=priceDirection([change]),tone=priceTones[direction];
+    const signature=JSON.stringify(change);
+    if(signature===closedPriceWarning || priceWarning?.signature===signature) return;
+    priceWarning?.host.remove();
+    const host=document.createElement('div');host.id='ebay-finder-price-warning';
+    host.style.cssText='all:initial!important;position:fixed!important;top:12px!important;left:56px!important;right:56px!important;z-index:2147483647!important;';
+    const shadow=host.attachShadow({mode:'closed'});
+    const style=document.createElement('style');style.textContent=`section{display:flex;align-items:start;gap:12px;max-width:920px;margin:auto;padding:14px 16px;border:2px solid ${tone.border};border-radius:10px;background:${tone.background};color:${tone.text};box-shadow:0 4px 18px #0003;font:14px/1.5 system-ui}strong{display:block}button{flex:none;margin-left:auto;padding:5px 10px;border:1px solid ${tone.border};border-radius:5px;background:white;color:${tone.text};font:13px system-ui;cursor:pointer}`;
+    const section=document.createElement('section');section.setAttribute('role','alert');
+    const text=document.createElement('div'), heading=document.createElement('strong'), detail=document.createElement('span');
+    heading.textContent=direction==='down' ? 'Price decreased since the saved scan' : direction==='up' ? 'Price increased since the saved scan' : 'Prices changed since the saved scan';
+    detail.textContent=`${change.label}: ${priceChangeText(change)}. Review the current listing before purchasing.`;
+    text.append(heading,detail);
+    const close=document.createElement('button');close.type='button';close.textContent='Close';close.setAttribute('aria-label','Dismiss price change warning');
+    close.addEventListener('click',()=>{closedPriceWarning=signature;host.remove();priceWarning=undefined;});
+    section.append(text,close);shadow.append(style,section);document.documentElement.append(host);
+    priceWarning={host,signature};
+  }
+  function queueCacheSave(rows) {
+    if(listingMissing || !rows.length) return;
+    const signature=JSON.stringify(rows);
+    if(signature===savedSignature) return;
+    if(cacheCandidate?.signature!==signature) {
+      cacheCandidate={signature,rows,attempts:0};
+      clearTimeout(cacheSaveTimer);
+      updateCacheNotice('Updating saved listing data…');
+      // Let eBay finish populating its embedded variant data before replacing
+      // the full saved listing. Later data changes get their own save.
+      cacheSaveTimer=setTimeout(saveCacheCandidate,1500);
+    }
+  }
+  async function saveCacheCandidate() {
+    if(listingMissing || cacheSaving || !cacheCandidate || cacheCandidate.signature===savedSignature) return;
+    if(document.readyState!=='complete') {cacheSaveTimer=setTimeout(saveCacheCandidate,500);return;}
+    cacheSaving=true;
+    const candidate=cacheCandidate;
+    candidate.attempts++;
+    let saved=false;
+    try {
+      const response=await EbayRuntime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows,baseline:comparisonBaseline,pageOpenedAt});
+      // Always compare with the cache captured when this document opened, not
+      // with an intermediate write caused by eBay's own page hydration.
+      reportedPriceChanges.clear();
+      for(const change of response?.priceChanges || []) if(priceChangeText(change)) reportedPriceChanges.set(change.id,change);
+      updatePriceWarnings(candidate.rows);
+      if(response?.saved!==true || !Number.isFinite(response.fetchedAt)) throw new Error(response?.error || 'The extension did not confirm the cache update. Reload this listing if the extension was updated.');
+      savedSignature=candidate.signature;
+      saved=true;
+      updateCacheNotice(response.superseded ? `Cache already updated by a newer listing tab: ${new Date(response.fetchedAt).toLocaleString()}` : `Saved to cache: ${new Date(response.fetchedAt).toLocaleString()}`);
+    } catch(error) {
+      updateCacheNotice(`Could not update saved listing data: ${error.message}`,true);
+    } finally {
+      cacheSaving=false;
+      if(cacheCandidate!==candidate || (!saved && candidate.attempts<3)) {
+        clearTimeout(cacheSaveTimer);
+        cacheSaveTimer=setTimeout(saveCacheCandidate,1000);
+      }
+    }
+  }
+  function refresh(){
+    if(listingMissing) return;
+    if(EbayVariants.isMissingListing(document)) {
+      clearTimeout(cacheSaveTimer);cacheCandidate=undefined;
+      removeMissingListing().catch(error=>{listingMissing=false;updateCacheNotice(error.message,true);});
+      return;
+    }
+    const rows=readListing();
+    if(updateRows) updateRows(rows);
+    else if(rows.length) updateRows=mount(rows);
+    updatePriceWarnings(rows);
+    queueCacheSave(rows);
+  }
   refresh();
   const observer=new MutationObserver(records=>{
     if(records.every(record=>record.target.closest?.('#ebay-finder-dock')))return;
     clearTimeout(scheduled);scheduled=setTimeout(refresh,500);
   });
   observer.observe(document.body,{childList:true,subtree:true,characterData:true});
+  // Hydration may change script text without an observable child-list update.
+  // Re-read briefly after load; unchanged data is never written repeatedly.
+  let hydrationReads=0;
+  const hydrationTimer=setInterval(()=>{
+    refresh();
+    if(++hydrationReads>=15) clearInterval(hydrationTimer);
+  },1000);
+  window.addEventListener('pagehide',()=>clearInterval(hydrationTimer),{once:true});
+  EbayRuntime.onDispose(()=>{listingMissing=true;clearInterval(hydrationTimer);clearTimeout(scheduled);clearTimeout(cacheSaveTimer);observer.disconnect();});
 })();

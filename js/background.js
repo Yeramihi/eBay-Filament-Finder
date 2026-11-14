@@ -1,9 +1,97 @@
-importScripts('variants.js');
+importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
-const cache = new Map();
-const MAX_AGE = 30 * 60 * 1000;
 
+let hiddenChanges=Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (['finder-page-session-get','finder-page-session-set'].includes(message?.type) && sender.id === chrome.runtime.id) {
+    (async()=>{
+      const source=new URL(sender.url);
+      if(!/^https:\/\/(?:www\.)?ebay\.(?:co\.uk|com)$/.test(source.origin)) throw new Error('Unsupported snapshot source.');
+      const keys=message.type==='finder-page-session-get' ? [].concat(message.keys || []) : Object.keys(message.patch || {});
+      if(!keys.length || keys.some(key=>{
+        if(typeof key!=='string'||!key.startsWith('finder-page:')) return true;
+        try {
+          const page=new URL(key.slice('finder-page:'.length).replace(/:(?:rows|failures)$/,''));
+          return page.origin!==source.origin || !/^\/(?:sch\/|itm\/(?:[^/]+\/)?\d+)/.test(page.pathname);
+        } catch {return true;}
+      })) throw new Error('Unsupported snapshot keys.');
+      if(message.type==='finder-page-session-get') return {data:await chrome.storage.session.get(keys)};
+      await chrome.storage.session.set(message.patch);return {saved:true};
+    })().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-missing-clear' && sender.id === chrome.runtime.id) {
+    EbayListingCache.forgetMissing().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-listing-missing' && sender.id === chrome.runtime.id) {
+    (async()=>EbayListingCache.markMissing(EbayListingCache.canonical(sender.url)))()
+      .then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-purge' && sender.id === chrome.runtime.id) {
+    EbayListingCache.purge().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-hidden-set' && sender.id === chrome.runtime.id) {
+    const task=hiddenChanges.then(async()=>{
+      const url=EbayListingCache.canonical(message.url);
+      const source=new URL(sender.url);
+      if(source.origin!==new URL(url).origin || !source.pathname.startsWith('/sch/')) throw new Error('Unsupported listing URL.');
+      if(![0,1,7,30].includes(message.days)) throw new Error('Choose 1 day, 1 week or 1 month.');
+      const key='finder:hiddenListings';
+      const saved=await chrome.storage.local.get(key);
+      const hidden=Object.fromEntries(Object.entries(saved[key] || {}).filter(([,entry])=>Number.isFinite(entry?.expiresAt)&&entry.expiresAt>Date.now()));
+      if(message.days===0) delete hidden[url];
+      else hidden[url]={expiresAt:Date.now()+message.days*86400000,title:String(message.title || 'Hidden listing').slice(0,1000)};
+      await chrome.storage.local.set({[key]:hidden});
+      return {hidden};
+    });
+    hiddenChanges=task.catch(()=>{});
+    task.then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-index' && sender.id === chrome.runtime.id) {
+    (async()=>({items:await EbayListingCache.getIndex(new URL(sender.url).origin)}))()
+      .then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-read-all' && sender.id === chrome.runtime.id) {
+    (async()=>({items:await EbayListingCache.getAll(new URL(sender.url).origin)}))()
+      .then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-read' && sender.id === chrome.runtime.id) {
+    EbayListingCache.getMany(message.urls || []).then(items=>respond({items}),error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-delete' && sender.id === chrome.runtime.id) {
+    (async()=>{
+      const url=EbayListingCache.canonical(message.url);
+      if(new URL(sender.url).origin!==new URL(url).origin) throw new Error('Unsupported listing URL.');
+      await EbayListingCache.remove(url);
+      return {removed:true};
+    })().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-cache-refresh' && sender.id === chrome.runtime.id) {
+    (async()=>{
+      const url=EbayListingCache.canonical(sender.url);
+      if (!Array.isArray(message.rows) || !message.rows.length || message.rows.some(row=>!row || typeof row.label!=='string')) {
+        throw new Error('No readable listing data is available yet.');
+      }
+      // An explicitly opened listing is fresh even if eBay omits stock for a
+      // variant. Preserve that unknown status rather than retaining old data.
+      const result=await EbayListingCache.refreshFromPage(url,message.rows,message.baseline,Number.isFinite(message.pageOpenedAt) ? message.pageOpenedAt : Date.now());
+      return result.persisted ? {saved:true,fetchedAt:result.fetchedAt,priceChanges:result.priceChanges,superseded:result.superseded===true} : {saved:false,error:result.cacheError,priceChanges:result.priceChanges};
+    })().then(respond,error=>respond({saved:false,error:error.message}));
+    return true;
+  }
+  if (message?.type === 'open-finder-guide' && sender.id === chrome.runtime.id) {
+    chrome.tabs.create({url:chrome.runtime.getURL('html/guide.html')})
+      .then(() => respond({opened:true}), () => respond({opened:false}));
+    return true;
+  }
   if (message?.type === 'get-finder-settings-view' && sender.id === chrome.runtime.id) {
     Promise.all(['html/settings.html', 'css/settings.css'].map(async path => {
       const response = await fetch(chrome.runtime.getURL(path));
@@ -13,6 +101,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       console.error(error);
       respond(null);
     });
+    return true;
+  }
+  if (message?.type?.startsWith('visible-scan-')) {
+    EbayVisibleScanner.handle(message,sender).then(respond,error=>respond({error:error.message}));
     return true;
   }
   if (message?.type !== 'scan-listing') return;
@@ -25,14 +117,15 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         !/^\/itm\/\d+$/.test(url.pathname)) throw new Error('Unsupported listing URL.');
     const sourceTab = sender.tab?.id;
     if (!Number.isInteger(sourceTab)) throw new Error('Missing source tab.');
-    let pageCache = cache.get(sourceTab);
-    if (!pageCache) { pageCache = new Map(); cache.set(sourceTab,pageCache); }
     const key = url.origin + url.pathname;
-    const cached = pageCache.get(key);
-    if (cached && Date.now() - cached.time < MAX_AGE) return cached.result;
+    if(await EbayListingCache.isMissing(key)) return {removed:true,missing:true};
+    const cached = message.forceRefresh === true ? null : await EbayListingCache.get(key);
+    if (cached) return cached;
+    if (message.visible === true) return EbayVisibleScanner.start(key,sender,message.progress,message.returnToSource === true);
     const response = await fetch(key, { credentials: 'include', signal: AbortSignal.timeout(20000) });
-    if (!response.ok) throw new Error(`eBay returned HTTP ${response.status}.`);
     const html = await response.text();
+    if(EbayVariants.isMissingListing(html)) return EbayListingCache.markMissing(key);
+    if (!response.ok) throw new Error(`eBay returned HTTP ${response.status}.`);
     if (/<(?:title|h1)\b[^>]*>[^<]*(?:captcha|verify you are human|pardon our interruption|security measure)/i.test(html) &&
         !html.includes('"variationCombinations"')) {
       throw new Error('eBay verification page; scan stopped.');
@@ -49,18 +142,14 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     } catch {
       coupon = EbayVariants.getCoupon(html);
     }
-    const result = { rows: EbayVariants.withPostage(EbayVariants.withVolumePricing(rows,[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon})) };
-    // A request started before a page reload must not refill the new page's cache.
-    if (cache.get(sourceTab) === pageCache) {
-      pageCache.set(key, { time: Date.now(), result });
-    }
-    return result;
+    const result = { rows: EbayVariants.withPostage(EbayVariants.withBannerOffers(EbayVariants.withVolumePricing(rows,[html]),[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon,title:typeof message.title==='string' ? message.title : row.title,image:row.image || message.image})) };
+    return EbayListingCache.put(key,result.rows);
   })().then(result => respond(result), error => respond({ error: error.message }));
   return true;
 });
 
-chrome.tabs.onUpdated.addListener((id,change) => { if (change.status === 'loading') cache.delete(id); });
-chrome.tabs.onRemoved.addListener(id => { cache.delete(id); });
+chrome.tabs.onUpdated.addListener((id,change) => { EbayVisibleScanner.updated(id,change).catch(console.error); });
+chrome.tabs.onRemoved.addListener(id => { EbayVisibleScanner.removed(id).catch(console.error); });
 
 // Release notes are bundled with the extension and can be revisited from its icon.
 const SETTINGS_MENU = 'finder-settings';
@@ -101,6 +190,7 @@ chrome.windows.onRemoved.addListener(id => {
   if (id === settingsWindow) settingsWindow = undefined;
 });
 
+const GUIDE_MENU = 'finder-guide';
 const WHATS_NEW_MENU = 'finder-whats-new';
 function openReleaseNotes() {
   return chrome.tabs.create({url:chrome.runtime.getURL('html/whats-new.html')});
@@ -111,6 +201,9 @@ async function handleInstallation(details) {
     if (chrome.runtime.lastError) console.error(chrome.runtime.lastError.message);
   });
   chrome.contextMenus.create({id:WHATS_NEW_MENU,title:'What’s new',contexts:['action']}, () => {
+    if (chrome.runtime.lastError) console.error(chrome.runtime.lastError.message);
+  });
+  chrome.contextMenus.create({id:GUIDE_MENU,title:'User guide',contexts:['action']}, () => {
     if (chrome.runtime.lastError) console.error(chrome.runtime.lastError.message);
   });
   const version = chrome.runtime.getManifest().version;
@@ -125,6 +218,13 @@ chrome.runtime.onInstalled.addListener(details => {
   handleInstallation(details).catch(console.error);
 });
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === GUIDE_MENU) chrome.tabs.create({url:chrome.runtime.getURL('html/guide.html')}).catch(console.error);
   if (info.menuItemId === SETTINGS_MENU) openSettings(tab).catch(console.error);
   if (info.menuItemId === WHATS_NEW_MENU) openReleaseNotes().catch(console.error);
+});
+
+// Notify content scripts when their tab becomes active. Ordinary tabs without
+// the search sidebar simply have no listener; no additional permissions needed.
+chrome.tabs.onActivated.addListener(({tabId})=>{
+  chrome.tabs.sendMessage(tabId,{type:'finder-search-activated'}).catch(()=>{});
 });

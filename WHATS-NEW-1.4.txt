@@ -1,0 +1,29 @@
+eBay Filament finder 1.4
+
+New defaults: Mixed scanning, 1-month cache retention, Photos only search results and Tiles on listing pages. Filter inputs have no example prompts. Existing saved preferences are preserved.
+
+Faster browsing with large saved collections
+Saved listings now load asynchronously in small batches. Search results draw roughly two screenfuls at a time and replace off-screen tiles as you scroll. Filtering and sorting still use all loaded variants, with processing split into short slices to keep the interface responsive. Cache reuse, listing deduplication and smaller search snapshots reduce repeated work. Performance depends on your device and collection size.
+
+Persistent local cache
+Keep scanned listing data across browser restarts, with clear cached ages and timestamps. Unexpired entries load automatically and are skipped during scans. Choose a retention period of 1 day, 1 week, 1 month or Never dropped. Enable Always show all cached data to browse the entire saved collection for the current eBay marketplace without revisiting every results page.
+
+Three scanning modes
+Choose Background, Visible tabs or Mixed. Visible scanning reuses one foreground tab. Mixed starts with your saved parallel count, pauses new background requests on an error, recovers failed listings one at a time in the visible tab, then returns to background scanning. Retry, Skip, Stop and persistent Escape-to-stop notices help you handle verification or loading problems.
+
+Better search-page navigation
+Previous/Next buttons show the current results page. After the first user-initiated Scan, newly loaded results extend or resume processing without clearing saved results or rechecking handled listing IDs. Stop pauses automatic processing. The finder stays open while you browse, and filters no longer copy the eBay query automatically.
+
+Photos only and independent preferences
+Choose Tiles, Single lines or a responsive Photos only grid. Each photo's information icon opens the full result and its calculation tooltips. Search results and listing pages remember separate view and sort choices. Sort by is always visible, with A-Z/Z-A for names and Low-High/High-Low for prices. Resize eBay places the finder beside the page; the collapsed rail always keeps its own space.
+
+Improved price and promotion estimates
+Clearer labels: Individual purchase, Bulk purchase and Mixed bulk average. Recognise multi-buy discounts, fixed vouchers, coded promotion banners and advertised subtitle coupons. Apply recognised maximum savings and fixed vouchers once per order. Mixed averages now include recognised discounts, coupons, saving caps and known postage, even without a shared quantity offer. Conditional promotions and unknown postage remain identified in explanations.
+
+Refresh, hide and clean up
+Refresh or clear the cache for an entire listing. Hide a listing for a day, week or month, then restore it from the Hidden section. Opening a listing updates saved data and compares prices with the previous saved scan: decreases are green, increases red, and mixed changes black. Search tabs refresh updated saved data when activated while idle. Confirmed missing listings are removed and remembered to skip ghost results; clear all remembered missing IDs from Settings.
+
+Storage, reliability and help
+See local-storage usage and purge all listing cache from Settings while keeping preferences and hidden choices. Expanded storage permission supports larger collections. Improved page-reload handling, correct grid reshuffling and photo placeholders prevent stale images. The bundled user guide has been rewritten with current screenshots, every setting and control, all sorting choices and detailed price explanations.
+
+Cached information is not live. Experimental purchase estimates depend on offer terms, quantities, coupon eligibility, limits and delivery charges. Always check the listing and final checkout total.

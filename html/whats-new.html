@@ -1,38 +1,74 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <title>What’s new in 1.3 · eBay Filament finder</title>
-  <link rel="icon" href="../images/icons/icon-32.png">
-  <link rel="stylesheet" href="../css/whats-new.css">
-</head>
-<body>
-  <header class="brand wrap">
-    <a href="#main" class="brand-name"><img src="../images/icons/icon-48.png" width="36" height="36" alt="">eBay Filament finder</a>
-    <span class="release-tag">RELEASE NOTES <span>1.3</span></span>
-  </header>
-  <main id="main" class="wrap">
-    <section class="hero" aria-labelledby="release-title">
-      <div class="hero-copy">
-        <p class="eyebrow">WHAT’S NEW IN VERSION 1.3</p>
-        <h1>See beyond<br><span>the cheapest colour.</span></h1>
-        <p class="intro">Filter-aware average prices, clearer pricing explanations, and a more responsive finder.</p>
-      </div>
-    </section>
-    <section class="changes" aria-labelledby="changes-title">
-      <div class="section-heading"><h2 id="changes-title">Your update, at a glance.</h2></div>
-      <div class="feature-grid">
-        <article class="feature"><span class="feature-number">01 / AVERAGES</span><h3>Average matching price.</h3><p>Compare the mean multi-buy price per item across matching, in-stock variants when a consistent offer is available; otherwise see the mean regular item price. The experimental average follows your applied filters and gives every variant equal weight.</p></article>
-        <article class="feature"><span class="feature-number">02 / OFFERS</span><h3>Understand the spread.</h3><p>Use the information icon after the average price for offer averages and the cheapest and most expensive selections at the required quantity. Stock quantities are ignored.</p></article>
-        <article class="feature"><span class="feature-number">03 / SORTING</span><h3>Compare listings fairly.</h3><p>Search results can now be sorted by average matching price, ascending or descending. Sorting within a single listing keeps its existing choices.</p></article>
-        <article class="feature"><span class="feature-number">04 / TOOLTIPS</span><h3>Pricing details, easier to read.</h3><p>Formatted tooltips replace dense native pricing notes. Hover, focus or tap the circled information icons to read details. Experimental markers remain beside estimated prices. Press Escape to dismiss.</p></article>
-        <article class="feature"><span class="feature-number">05 / PERFORMANCE</span><h3>A more responsive finder.</h3><p>Improved background saving and result updates reduce unnecessary work and keep average-price sorting steady during scans. Typing in filter inputs triggers no processing or saving: filters run only when you click Apply filters or press Enter.</p></article>
-      </div>
-    </section>
-    <aside class="estimate-note"><span class="note-symbol" aria-hidden="true">*</span><div><h2>Always check the deal.</h2><p>Price per item estimates remain experimental. Check quantities, coupon eligibility, spool size and delivery charges on the listing and at checkout.</p></div></aside>
-    <footer><span>eBay Filament finder <strong>1.3</strong></span><span>Close this tab to return to browsing.</span></footer>
-  </main>
-</body>
-</html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>What’s new in 1.4 · eBay Filament finder</title><link rel="icon" href="../images/icons/icon-32.png"><link rel="stylesheet" href="../css/whats-new.css"></head><body><header class="brand wrap"><a href="#main" class="brand-name"><img src="../images/icons/icon-48.png" width="36" height="36" alt="">eBay Filament finder</a><span class="release-tag">RELEASE NOTES <span>1.4</span></span></header>
+<main id="main" class="wrap"><section class="hero"><div><p class="eyebrow">WHAT’S NEW IN VERSION 1.4</p>
+<h1>Keep your finds.<br><span>Browse with less waiting.</span></h1>
+<p class="intro">Persistent saved results, flexible scanning, a new photo grid and a lighter interface for large collections.</p>
+<a class="jump-link" href="guide.html">Open the complete user guide →</a></div>
+<figure class=""><a href="../images/guide/search-photos.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-photos.jpg" alt="Photos only: actual sorted, filtered results from the finder." loading="lazy"></a><figcaption>Photos only: actual sorted, filtered results from the finder. Click to open the complete screenshot.</figcaption>
+</figure>
+</section>
+<section class="performance-feature" id="performance"><p class="eyebrow">PERFORMANCE / THE BIG CHANGE</p>
+<h2>All your data. A much smaller screenful of work.</h2>
+<p>Previously, a large saved collection could leave the finder waiting while thousands of entries were prepared and drawn. Version 1.4 loads saved listings in small asynchronous batches and draws roughly two screenfuls of search results at a time. Scrolling replaces off-screen tiles instead of keeping the entire collection on the page.</p>
+<div class="performance-steps"><article><strong>Read in batches</strong><p>Cache loading shows progress and yields between batches.</p>
+</article>
+<article><strong>Search everything loaded</strong><p>Filters and sorting use the full in-memory dataset, with short pauses for the browser to respond.</p>
+</article>
+<article><strong>Draw what is nearby</strong><p>Tiles, lines and photo grids render a small window. Closed sections defer their entries.</p>
+</article>
+</div>
+<p><strong>If five tiles fit, roughly ten are drawn—not thousands.</strong> Your filter still searches all loaded variants. Cache reuse, deduplication and smaller saved search snapshots further reduce repeated requests and data copying.</p>
+<p class="performance-limit">The exact improvement depends on your device and collection. Cache reading and in-memory data still take time and space; this is not a fixed speed-up or memory benchmark.</p>
+</section>
+<section class="changes"><div class="section-heading"><h2>Everything else in 1.4</h2><p>New-install defaults: Mixed scanning, one-month cache retention, Photos only search results and Tiles on listing pages. Filter inputs start empty, without example prompts. Existing saved preferences are preserved.</p>
+</div>
+<div class="feature-grid"><article class="feature"><span class="feature-number">01 / SAVED RESULTS</span><h3>Pick up where you left off.</h3>
+<p>Persistent local listing data survives browser restarts. Cached ages are explicit; eligible saved entries load automatically and are skipped during scans. Choose 1 day, 1 week, 1 month or Never dropped.</p>
+</article>
+<article class="feature"><span class="feature-number">02 / YOUR WHOLE COLLECTION</span><h3>Search the cache you already built.</h3>
+<p>Enable Always show all cached data to see every unexpired saved listing for the current eBay marketplace, without revisiting dozens of results pages or starting an active scan.</p>
+</article>
+<article class="feature"><span class="feature-number">03 / SCAN MODES</span><h3>Choose Background, Visible tabs or Mixed.</h3>
+<p>Visible tabs reuses one foreground tab. Mixed starts with your parallel background count, pauses new requests after an error, recovers failed listings serially in that tab, then resumes background work. Retry, Skip, Stop and persistent Escape notices keep you in control.</p>
+</article>
+<article class="feature"><span class="feature-number">04 / BROWSING</span><h3>Keep adding results as you browse.</h3>
+<p>After your first Scan, client-side pagination extends or resumes the queue, without repeating handled listing IDs. Previous/Next controls show the current page. Stop pauses automatic work; navigation never starts the initial scan for you.</p>
+</article>
+<article class="feature"><span class="feature-number">05 / LAYOUT</span><h3>Tiles, lines or a wall of photos.</h3>
+<p>Photos only is a responsive sorted grid with full details under each corner ⓘ, including nested calculation tooltips. Listing and search pages remember their own view and sort settings. Sort by stays visible with A–Z/Z–A and Low–High/High–Low labels.</p>
+</article>
+<article class="feature"><span class="feature-number">06 / PRICING</span><h3>Clearer names and better promotion estimates.</h3>
+<p>Individual purchase, Bulk purchase and Mixed bulk average include recognised coupons and applicable saving caps. Parsing supports fixed vouchers, multi-buy tiers, coded promotion banners and advertised subtitle codes. Caps and fixed vouchers apply once per order; conditional offers remain clearly labelled.</p>
+</article>
+<article class="feature"><span class="feature-number">07 / FRESH DATA</span><h3>Know when saved prices changed.</h3>
+<p>Opening a listing refreshes its saved variants. Price changes on the opened variant get a persistent banner; other changes get a concise sidebar count. Green means lower, red higher and black mixed changes. Idle search tabs reload updated cache data when activated.</p>
+</article>
+<article class="feature"><span class="feature-number">08 / CLEANUP</span><h3>Keep the useful listings.</h3>
+<p>Refresh or clear one whole listing’s cache. Hide a listing for a day, week or month and unhide it from the collapsed Hidden section. Confirmed missing eBay pages are removed and remembered so ghost results are skipped; Settings can clear all remembered missing IDs.</p>
+</article>
+<article class="feature"><span class="feature-number">09 / STORAGE</span><h3>See and manage your local storage.</h3>
+<p>Settings shows live local-storage usage and Purge all cache. Expanded local-storage permission supports larger collections. Purging preserves preferences, hidden choices and remembered missing IDs.</p>
+</article>
+<article class="feature"><span class="feature-number">10 / SIDEBAR</span><h3>A finder that behaves while you browse.</h3>
+<p>Whole-word title detection opens it for filament. Open panels stay open across results updates. Resize eBay places the finder beside the page instead of over it, while the collapsed rail always keeps its space. Search filters stay under your control.</p>
+</article>
+<article class="feature"><span class="feature-number">11 / RELIABILITY</span><h3>Smoother reloads and safer photos.</h3>
+<p>Old page tasks stop cleanly when the extension connection changes. Search snapshots are smaller. Photos keep a placeholder until their own image loads, and the grid updates correctly when the same visible rows reshuffle.</p>
+</article>
+<article class="feature"><span class="feature-number">12 / HELP</span><h3>A complete guide inside the extension.</h3>
+<p>The guide now covers every setting and control, all 16 sorting choices, scanning modes, cache management, price calculations and every view, with real current screenshots. Open it from the sidebar or the icon’s right-click menu.</p>
+</article>
+</div>
+</section>
+<section class="release-gallery"><h2>Look closer.</h2>
+<div class="release-images"><figure class=""><a href="../images/guide/settings-all.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/settings-all.jpg" alt="Settings: separate view choices, scanning, retention and storage. The screenshot shows user-selected preferences." loading="lazy"></a><figcaption>Settings: separate view choices, scanning, retention and storage. The screenshot shows user-selected preferences. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class=""><a href="../images/guide/photo-nested.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/photo-nested.jpg" alt="Open the photo’s ⓘ, then a price ⓘ for the calculation inside it." loading="lazy"></a><figcaption>Open the photo’s ⓘ, then a price ⓘ for the calculation inside it. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</section>
+<aside class="estimate-note"><span class="note-symbol" aria-hidden="true">*</span><div><h2>Read the calculation, then check the deal.</h2>
+<p>Cached results are not live prices or stock. Bulk and mixed-average estimates depend on supported offers, quantities, coupon eligibility, limits and known postage. Check the listing and final checkout total before buying.</p>
+<p><a href="guide.html#prices">Read the complete price explanations →</a></p>
+</div>
+</aside><footer><span>eBay Filament finder <strong>1.4</strong> · Screenshots: 12 November 2026</span><span>Close this tab to return to browsing.</span></footer>
+</main></body></html>

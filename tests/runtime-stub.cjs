@@ -1,0 +1,1 @@
+exports.forChrome=chrome=>({active:()=>true,assertActive(){},expected:()=>false,report:console.error,onDispose(){},sendMessage:message=>chrome.runtime.sendMessage(message),local:{get:keys=>chrome.storage.local.get(keys),set:patch=>chrome.storage.local.set(patch)},session:{get:keys=>chrome.storage.session.get(keys),set:patch=>chrome.storage.session.set(patch)}});

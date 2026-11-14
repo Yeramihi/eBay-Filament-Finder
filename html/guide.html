@@ -1,0 +1,354 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>User guide · eBay Filament finder 1.4</title><link rel="icon" href="../images/icons/icon-32.png"><link rel="stylesheet" href="../css/guide.css"></head><body><header><a href="#top"><img src="../images/icons/icon-48.png" width="36" height="36" alt="">eBay Filament finder</a><span>USER GUIDE · 1.4</span></header>
+<div class="layout"><nav aria-label="Guide contents"><strong>In this guide</strong><a href="#start">Get started</a><a href="#browse">Scan & browse</a><a href="#modes">Scanning modes</a><a href="#cache">Saved data</a><a href="#filters">Filters</a><a href="#views">Views & layout</a><a href="#prices">Every price explained</a><a href="#sorting">All sorting choices</a><a href="#controls">Every control</a><a href="#settings">Settings & defaults</a><a href="#performance">Performance</a><a href="#help">Troubleshooting</a></nav>
+<main id="top"><section class="hero"><p class="eyebrow">VERSION 1.4 · COMPLETE USER GUIDE</p>
+<h1>Find the variant.<br>Understand the deal.</h1>
+<p class="lead">Compare options inside eBay listings, reuse your saved discoveries and choose how to scan.</p>
+<p>Works on eBay UK and eBay US search results and item pages. The finder reads listing data, filters variants and estimates purchase prices. It does not place orders or apply coupon codes for you.</p>
+<p><a href="whats-new.html">See everything new in version 1.4 →</a></p>
+</section>
+<section id="start"><p class="eyebrow">01 / QUICK START</p>
+<h2>Your first search</h2>
+<ol><li>Search on eBay normally. A case-insensitive, whole-word <strong>filament</strong> match in a listing title opens the finder. Other searches start collapsed. Click the side rail whenever you want to open it.</li><li>Previously saved, unexpired data for the visible listings loads automatically. To see your wider saved collection, enable <strong>Always show all cached data</strong> in Settings. Neither action starts an active scan.</li><li>Click <strong>Scan</strong> to check new or expired listings from the search page. Unexpired saved listings are reused. Your eBay search text is <strong>not copied into the filters</strong>.</li><li>Type words such as <strong>yellow PLA silk</strong> in Variant, then click <strong>Apply filters</strong> or press Enter. Use Listing for brands or title promotions.</li><li>Choose a sort order. Open ⓘ to inspect calculations, or click an entry/photo to open the listing and selected variant in a new tab.</li></ol>
+<div class="note">There is no initial automatic scan. Opening the finder, loading saved data, filtering, sorting and scrolling do not start one.</div>
+<figure class="narrow-shot"><a href="../images/guide/search-tiles.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-tiles.jpg" alt="Search results in Tiles view, with filters, navigation, cached ages and listing actions." loading="lazy"></a><figcaption>Search results in Tiles view, with filters, navigation, cached ages and listing actions. Click to open the complete screenshot.</figcaption>
+</figure>
+</section>
+<section id="browse"><p class="eyebrow">02 / KEEP BROWSING</p>
+<h2>A collection that grows with you</h2>
+<p><strong>Previous / Page N / Next</strong> at the top use eBay’s existing pagination links. Buttons are disabled when there is no usable link, including first, last and single-page results. You can also use eBay’s own pagination.</p>
+<p>After your first Scan, client-side results updates add newly discovered listing IDs to the queue. If a scan is running, the queue grows. If it finished, processing resumes for the new candidates. Listings already handled are deduplicated: eBay can repeat the same listing on several result pages.</p>
+<p>The finder collects eligible organic cards in the main results list; sponsored cards, recommendation carousels and secondary groups are not scan candidates. The separate title check for automatically opening the finder can also recognise sponsored listing titles.</p>
+<p>An open finder stays open during pagination. A closed finder checks new listing titles for “filament”. The finder ignores its own interface changes when watching eBay’s results.</p>
+<p><strong>Stop</strong> pauses work and automatic queue extension processing until you click Scan again. Completed results remain. A full reload or new query can reset the live queue; persistent listing data survives.</p>
+<p><strong>Scanning X of Y listings</strong> refers to the current scan batch, not everything in your cache. New candidates extend Y. With parallel requests, X is the earliest active position. Retrying or switching to visible recovery retains that listing’s position.</p>
+</section>
+<section id="modes"><p class="eyebrow">03 / CONTROL THE REQUESTS</p>
+<h2>Background, Visible tabs or Mixed</h2>
+<p>Choose <strong>Settings → Scanning mode</strong>. Changes take effect when you next click Scan.</p>
+<div class="table-wrap"><table><thead><tr><th>Mode</th><th>How it works</th><th>Parallel setting</th></tr>
+</thead>
+<tbody><tr><td>Background</td><td>Checks listings without opening tabs. Failures appear in Could not check; background mode does not open a verification tab automatically.</td><td>Uses your saved count; default 5.</td></tr>
+<tr><td>Visible tabs</td><td>Opens one foreground scan tab and reuses it for successive listings. eBay loads normally; the listing sidebar is suppressed in this managed tab.</td><td>Fixed at 1. Your saved background count is kept.</td></tr>
+<tr><td>Mixed</td><td>Starts in background at your saved count. On the first error, new background requests pause; active requests finish. Failed listings are recovered one at a time in the visible tab. Background scanning resumes after recovery.</td><td>Uses your saved count in background, then 1 during visible recovery.</td></tr>
+</tbody>
+</table>
+</div>
+<h3>If eBay asks you to act</h3>
+<ol><li>Read the persistent notice at the top of the scan tab. Resolve the verification, page reload or other page problem directly on eBay.</li><li>Click <strong>Retry</strong> to try that same listing again after resolving the problem. If the listing is still unreadable, it remains paused.</li><li>Use <strong>Skip</strong> to leave that listing and continue, or <strong>Stop</strong> to pause the scan.</li></ol>
+<p>A persistent notice on the search page and scan tab explains that <strong>Escape (Esc)</strong> stops scanning. You do not need to find a button while pages change. Stop keeps completed data and pending candidates. Click Scan on the source search page to resume.</p>
+<p>The visible tab is reused for the entire queue. Normal completion closes the owned scan tab; Stop leaves it open so you can inspect it. Closing the scan tab, closing its source search tab or navigating the scan tab to an unrelated page pauses/ends its ownership. Only one visible listing scan can run across search tabs.</p>
+<div class="note">Visible tabs and Mixed help you inspect and recover blocked pages. They do not guarantee that eBay will avoid rate limits or verification. The finder does not solve CAPTCHAs for you.</div>
+<div class="view-gallery"><figure class="narrow-shot"><a href="../images/guide/settings-background.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/settings-background.jpg" alt="Background mode uses the saved parallel count without opening scan tabs." loading="lazy"></a><figcaption>Background mode uses the saved parallel count without opening scan tabs. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class="narrow-shot"><a href="../images/guide/settings-visible.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/settings-visible.jpg" alt="Visible tabs mode shows 1 disabled parallel request; your saved background count is retained." loading="lazy"></a><figcaption>Visible tabs mode shows 1 disabled parallel request; your saved background count is retained. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class="narrow-shot"><a href="../images/guide/settings-all.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/settings-all.jpg" alt="Mixed mode keeps the background count; serial recovery is used only after an error." loading="lazy"></a><figcaption>Mixed mode keeps the background count; serial recovery is used only after an error. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</section>
+<section id="cache"><p class="eyebrow">04 / REUSE YOUR DISCOVERIES</p>
+<h2>Persistent cache, refresh and hidden listings</h2>
+<h3>Saved data loads without another scan</h3>
+<p>Listing data is saved locally in this Chrome profile and survives closing the browser. Each cached result shows its retrieval age and timestamp. Displaying it again does not make it newer.</p>
+<p>By default, a search page loads saved values for listings discovered in the current search. <strong>Always show all cached data</strong> loads every unexpired saved listing from the current eBay marketplace, so you can search your collection without revisiting every results page. UK and US collections are kept separate. Retention, filters and hidden choices still apply.</p>
+<p>During Scan, entries within the retention period are skipped and reused. Missing or expired entries need an active retrieval. Opening a normal listing page reads fresh data and updates its saved variants and retrieval time. When you return to a search tab while no scan is running, it reloads updated saved data.</p>
+<h3>Manage one listing</h3>
+<dl><dt>Clear cache</dt><dd>Deletes the saved data for the entire listing, including every variant. It does not merely delete the row you clicked.</dd><dt>Refresh</dt><dd>Actively retrieves the entire listing again, ignoring its saved age, using the selected scanning mode. Cache actions can be disabled during active scanning.</dd><dt>Hide from results</dt><dd>Hides the whole listing for 1 day, 1 week or 1 month (30 days); the tile’s initial duration is 1 month. Hiding does not delete its saved data. Actions are shown once per listing in the visible results window.</dd><dt>Hidden</dt><dd>A collapsed section after Results and before Out of stock. Expand to inspect hidden listings and choose Unhide. All their variants return automatically when the chosen period expires. A hidden listing whose data is unavailable can still have a title-only management entry.</dd></dl>
+<figure class="narrow-shot"><a href="../images/guide/hidden-results.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/hidden-results.jpg" alt="Hidden listings have Unhide controls and an expiry; no cache needs to be deleted." loading="lazy"></a><figcaption>Hidden listings have Unhide controls and an expiry; no cache needs to be deleted. Click to open the complete screenshot.</figcaption>
+</figure>
+<h3>Retention and storage</h3>
+<p><strong>Maximum saved listing age</strong>: 1 day, 1 week, 1 month (30 days, default), or Never dropped. Expired data is no longer reused as a fresh-enough cache entry. Never dropped still allows manual deletion and removal of confirmed missing listings.</p>
+<p><strong>Local storage used</strong> shows how much space the extension’s local data uses, including preferences and records. <strong>Purge all cache</strong> removes saved listing data and scan snapshots; preferences, hidden choices and remembered missing IDs are kept. Active scans or opened listings may save fresh data again after a purge. There is no undo for a purge. The extension requests unlimitedStorage so a large collection can grow beyond Chrome’s normal local-storage quota; available disk space still matters.</p>
+<h3>Missing listings</h3>
+<p>The explicit eBay “We looked everywhere! / Looks like this page is missing” page removes the listing from cache and remembers its ID. Future scans skip those IDs, including ghost search results. Generic server errors and verification pages do not mark listings missing. <strong>Clear remembered missing listings</strong> forgets all missing IDs at once; it does not purge valid cached listings. If you manually reopen a remembered listing and it becomes readable again, fresh data replaces its missing record.</p>
+<h3>Price-change notices when you open a listing</h3>
+<p>The finder compares newly read prices against the previous saved data before saving the replacement. A change on the originally opened variant creates a persistent top-page banner with Close. Changes to other variants are summarised by a changed-variant count in the sidebar.</p>
+<div class="table-wrap"><table><thead><tr><th>Colour</th><th>Meaning</th></tr>
+</thead>
+<tbody><tr><td>Green</td><td>Prices decreased.</td></tr>
+<tr><td>Red</td><td>Prices increased.</td></tr>
+<tr><td>Black</td><td>The compared prices contain both increases and decreases, or a currency changed.</td></tr>
+</tbody>
+</table>
+</div>
+<p>These are comparisons with the saved scan, not a continuous price history. Added variants and previously unknown prices are not counted as price changes. A failed save is reported with <strong>Retry cache save</strong>; the “Saved to cache” timestamp reflects the successful saved data.</p>
+</section>
+<section id="filters"><p class="eyebrow">05 / FIND THE RIGHT OPTIONS</p>
+<h2>Variant and Listing do different jobs</h2>
+<dl><dt>Variant</dt><dd>Matches option names such as material, colour and finish. <code>yellow PLA silk</code> requires all three fragments, in any order.</dd><dt>Listing</dt><dd>Matches the listing title, for example a brand name or <code>"Buy 5 pay 3"</code>.</dd><dt>AND (default)</dt><dd>Both non-empty fields must match.</dd><dt>OR</dt><dd>Either non-empty field can match. Words within each field still all need to match.</dd></dl>
+<p>Matching ignores case and uses text fragments. Quotes preserve a phrase: <code>"silk PLA"</code> requires that sequence. Empty fields impose no restriction. Typing alone does not apply a filter: click Apply filters or press Enter. Filters never automatically copy the eBay search query.</p>
+<p>On an individual listing there is one variant-name filter and no Scan/Stop buttons: listing data is read automatically. Clicking an available variant asks eBay to select its option dropdowns. If it cannot, use the offered reload link or select the options manually. This does not add anything to your basket.</p>
+<p>Filtering searches <strong>all loaded in-memory rows</strong>, not only the tiles currently drawn on screen. The mixed average is recalculated per listing from its matching, in-stock choices.</p>
+</section>
+<section id="views"><p class="eyebrow">06 / YOUR WORKSPACE</p>
+<h2>Three views, saved independently</h2>
+<p>Settings has separate <strong>Search results view</strong> and <strong>Listing page view</strong> selectors. Search results default to Photos only; listing pages default to Tiles. Each page type also remembers its own sort choice and direction.</p>
+<div class="table-wrap"><table><thead><tr><th>View</th><th>What you see</th><th>How to inspect details</th></tr>
+</thead>
+<tbody><tr><td>Tiles</td><td>Full listing/variant names, price calculations, stock and cache details.</td><td>Use each field’s ⓘ; the active sort field is highlighted green.</td></tr>
+<tr><td>Single lines</td><td>A compact row for each entry, with the active sort field highlighted.</td><td>Hover or focus the line for the complete text explanation.</td></tr>
+<tr><td>Photos only</td><td>A responsive grid in your selected order. One image per result/variant; different entries can legitimately share a photo.</td><td>Hover, focus or click the corner ⓘ to open the full tile and listing actions. Calculation ⓘ tooltips open inside that panel. Close, Escape or clicking outside dismisses it.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="view-gallery"><figure class=""><a href="../images/guide/search-tiles.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-tiles.jpg" alt="Search results · Tiles." loading="lazy"></a><figcaption>Search results · Tiles. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class=""><a href="../images/guide/search-lines.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-lines.jpg" alt="Search results · Single lines." loading="lazy"></a><figcaption>Search results · Single lines. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class=""><a href="../images/guide/search-photos.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-photos.jpg" alt="Search results · Photos only." loading="lazy"></a><figcaption>Search results · Photos only. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class=""><a href="../images/guide/listing-tiles.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-tiles.jpg" alt="Listing page · Tiles." loading="lazy"></a><figcaption>Listing page · Tiles. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class=""><a href="../images/guide/listing-lines.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-lines.jpg" alt="Listing page · Single lines." loading="lazy"></a><figcaption>Listing page · Single lines. Click to open the complete screenshot.</figcaption>
+</figure>
+<figure class=""><a href="../images/guide/listing-photos.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-photos.jpg" alt="Listing page · Photos only." loading="lazy"></a><figcaption>Listing page · Photos only. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<figure class="narrow-shot"><a href="../images/guide/photo-nested.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/photo-nested.jpg" alt="Photos only detail panel with a nested price explanation." loading="lazy"></a><figcaption>Photos only detail panel with a nested price explanation. Click to open the complete screenshot.</figcaption>
+</figure>
+<p>Failed or invalid photo requests keep a placeholder. A photo remains hidden until its own request loads successfully; grid reshuffling preserves the correct row order and image ownership.</p>
+<h3>Make room for eBay</h3>
+<p><strong>Resize eBay</strong> unchecked (default) overlays the open finder above the page. Checked places it beside a narrowed eBay page. The collapsed 44px rail always keeps its own space. Choose Left or Right and a Dock width of 25%, 50%, 75% or 100%. Drag the resize handle for a custom width, or focus it and use arrow keys; Home and End select its extremes. Empty compact results can use a smaller fixed panel.</p>
+</section>
+<section id="prices"><p class="eyebrow">07 / UNDERSTAND THE CALCULATION</p>
+<h2>Three prices, explained precisely</h2>
+<div class="price-grid"><article><h3>Individual purchase</h3>
+<p>The estimated cost of <strong>one item as sold</strong>: item price, less an applicable recognised coupon, plus known postage. Quantity offers are not applied.</p>
+</article>
+<article><h3>Bulk purchase*</h3>
+<p>The estimated <strong>cost per listed item at the recognised offer quantity</strong>. Applies one supported quantity offer, then an applicable recognised coupon, then known postage, and divides by the required quantity.</p>
+</article>
+<article><h3>Mixed bulk average</h3>
+<p>The average calculated purchase estimate across the <strong>matching, in-stock variants of this one listing</strong>. It includes recognised discounts, coupons, saving caps and known postage.</p>
+</article>
+</div>
+<div class="note">A listed item can be a multipack or a different weight. These figures are not guaranteed per-kilogram or per-spool prices. Check weight, pack size, diameter, quantity and the final checkout total.</div>
+<h3>Real coupon example</h3>
+<p>The captured ELEGOO listing has an ASA Blue item price of £15.40, free recognised postage and 20% off capped at £75 per order. The estimate for one item is <code>£15.40 − min(£3.08, £75) + £0 = £12.32</code>. Other matching colours have different prices, so their listing’s mixed average can differ.</p>
+<figure class="narrow-shot"><a href="../images/guide/photo-details.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/photo-details.jpg" alt="Real ELEGOO ASA Blue result: individual and bulk £12.32; matching average £12.54; 20% coupon with £75 maximum saving." loading="lazy"></a><figcaption>Real ELEGOO ASA Blue result: individual and bulk £12.32; matching average £12.54; 20% coupon with £75 maximum saving. Click to open the complete screenshot.</figcaption>
+</figure>
+<h3>Quantity offers and order totals</h3>
+<div class="table-wrap"><table><thead><tr><th>Offer</th><th>Calculation before a coupon</th></tr>
+</thead>
+<tbody><tr><td>Buy Q Pay P</td><td>Item price × P; divide the final order total by Q.</td></tr>
+<tr><td>Buy Q Get F Free</td><td>Item price × Q; divide the final order total by Q + F.</td></tr>
+<tr><td>Buy Q Save D%</td><td>Item price × Q × (1 − D/100); divide the final total by Q.</td></tr>
+<tr><td>eBay multi-buy</td><td>Use the recognised unit price at the chosen tier × its required quantity; divide the final total by that quantity. Identical items of that variant are required.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The finder compares supported title/banner offers with qualifying multi-buy tiers and uses a supported estimate; two quantity offers are not stacked. Unrecognised or ambiguous promotions are excluded. For title/banner estimates, equally priced eligible items are assumed. A mixed-price basket can produce a different result.</p>
+<h3>Percentage coupons, vouchers and limits</h3>
+<p>A recognised percentage or fixed-currency coupon reduces the item subtotal <strong>after the quantity discount and before postage</strong>. A maximum saving is applied once per order. A fixed voucher is also deducted once per order, not once per item, and never below a zero item subtotal.</p>
+<p>For example, a £699 item with 20% off but a £75 maximum saving is <code>£699 − min(£139.80, £75) = £624</code>, before any postage. A £5 voucher on an order subtotal of £40 makes £35 before postage; it is not £5 off each item.</p>
+<p>Supported structured eBay promotion banners can carry a required code, saving cap, quantity and terms link. Listing subtitle codes are labelled <strong>advertised/conditional</strong>. Duplicate title/banner promotions are not applied twice. A code-required quantity banner is not combined with a second coupon code. Unreadable caps or incompatible cap currencies are not silently treated as unlimited discounts.</p>
+<p>Minimum spend, expiry, account eligibility, variant eligibility and combining offers may still require checking on eBay. The finder does not apply or test a code at checkout.</p>
+<h3>Mixed bulk average is a comparison, not a basket quote</h3>
+<p>Each matching, in-stock, priced variant counts once; stock quantities are ignored. Rows with unknown prices are excluded. A shared currency is required.</p>
+<p>With a consistent recognised quantity offer, the average uses per-item offer estimates with coupon caps and known postage. Its tooltip also shows cheapest and most expensive required-quantity selections, each assuming all items have that one variant’s price. If identical items are required, mixing variants is not assumed.</p>
+<p>Without a shared offer, the finder averages each variant’s own calculated bulk-purchase estimate, including coupons even when there is no quantity discount. Different variants can use different requirements. This is not a quote for buying one of every variant in a single combined basket.</p>
+<h3>Every other field and symbol</h3>
+<div class="table-wrap"><table><thead><tr><th>Label</th><th>Meaning</th></tr>
+</thead>
+<tbody><tr><td>Listing / Variant</td><td>Title and option combination. A single-item listing can show only Listing.</td></tr>
+<tr><td>Coupon / Advertised coupon</td><td>Recognised saving, optional maximum and code. Advertised subtitle coupons are conditional.</td></tr>
+<tr><td>Offer</td><td>Required quantity, identical-item restriction, recognised coupon and any required code or cap.</td></tr>
+<tr><td>Stock</td><td>Availability when the listing data was retrieved. Cached stock is not a live check.</td></tr>
+<tr><td>Cached: age · timestamp</td><td>Data reused from local storage; age is based on its retrieval time.</td></tr>
+<tr><td>Saved to cache</td><td>The listing page’s latest successful save timestamp.</td></tr>
+<tr><td>≈</td><td>An approximate price/conversion supplied by eBay. No live currency conversion is performed by the finder.</td></tr>
+<tr><td>⚠</td><td>Postage was unknown and omitted where unavailable. The estimate is not a confirmed delivered total.</td></tr>
+<tr><td>* / ⚗ / Experimental</td><td>Offer assumptions apply. Read the calculation tooltip and verify the checkout result.</td></tr>
+<tr><td>Unknown / missing amount</td><td>Required data could not be read; unknown prices are not treated as zero.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="sorting"><p class="eyebrow">08 / EVERY ORDER</p>
+<h2>All 16 sorting choices, photographed</h2>
+<p>The <strong>Sort by</strong> dropdown is always visible on its own line below the buttons. Text choices use <strong>A–Z / Z–A</strong>; price choices use <strong>Low–High / High–Low</strong>. A green highlight marks the field used in Tiles and Single lines. Photos use the same order without text overlays.</p>
+<p>Search results offer ten choices; listings offer six. Mixed bulk average can be displayed on listing pages, but is not a listing-page sort choice because it is one value for the matching set. Unknown numeric prices follow known values in either direction. Different currencies are grouped rather than converted. Sorting does not start another scan.</p>
+</section>
+<details class="sort-example"><summary>Search results · Listing</summary><p>Orders listing titles. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Listing — A–Z</h4>
+<figure class=""><a href="../images/guide/search-title-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-title-asc.jpg" alt="Search results: Listing — A–Z. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Listing — A–Z. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Listing — Z–A</h4>
+<figure class=""><a href="../images/guide/search-title-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-title-desc.jpg" alt="Search results: Listing — Z–A. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Listing — Z–A. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<details class="sort-example"><summary>Search results · Variant</summary><p>Orders option labels; single-item listings use their title. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Variant — A–Z</h4>
+<figure class=""><a href="../images/guide/search-label-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-label-asc.jpg" alt="Search results: Variant — A–Z. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Variant — A–Z. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Variant — Z–A</h4>
+<figure class=""><a href="../images/guide/search-label-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-label-desc.jpg" alt="Search results: Variant — Z–A. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Variant — Z–A. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<details class="sort-example"><summary>Search results · Individual purchase</summary><p>Orders the calculated one-item cost. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Individual purchase — Low–High</h4>
+<figure class=""><a href="../images/guide/search-total-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-total-asc.jpg" alt="Search results: Individual purchase — Low–High. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Individual purchase — Low–High. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Individual purchase — High–Low</h4>
+<figure class=""><a href="../images/guide/search-total-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-total-desc.jpg" alt="Search results: Individual purchase — High–Low. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Individual purchase — High–Low. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<details class="sort-example"><summary>Search results · Bulk purchase*</summary><p>Orders the per-item offer estimate. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Bulk purchase* — Low–High</h4>
+<figure class=""><a href="../images/guide/search-spool-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-spool-asc.jpg" alt="Search results: Bulk purchase* — Low–High. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Bulk purchase* — Low–High. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Bulk purchase* — High–Low</h4>
+<figure class=""><a href="../images/guide/search-spool-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-spool-desc.jpg" alt="Search results: Bulk purchase* — High–Low. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Bulk purchase* — High–Low. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<details class="sort-example"><summary>Search results · Mixed bulk average</summary><p>Orders by each listing’s matching average. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Mixed bulk average — Low–High</h4>
+<figure class=""><a href="../images/guide/search-average-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-average-asc.jpg" alt="Search results: Mixed bulk average — Low–High. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Mixed bulk average — Low–High. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Mixed bulk average — High–Low</h4>
+<figure class=""><a href="../images/guide/search-average-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/search-average-desc.jpg" alt="Search results: Mixed bulk average — High–Low. Captured 12 November 2026." loading="lazy"></a><figcaption>Search results: Mixed bulk average — High–Low. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<details class="sort-example"><summary>Listing page · Variant</summary><p>Orders variant names. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Variant — A–Z</h4>
+<figure class=""><a href="../images/guide/listing-label-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-label-asc.jpg" alt="Listing page: Variant — A–Z. Captured 12 November 2026." loading="lazy"></a><figcaption>Listing page: Variant — A–Z. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Variant — Z–A</h4>
+<figure class=""><a href="../images/guide/listing-label-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-label-desc.jpg" alt="Listing page: Variant — Z–A. Captured 12 November 2026." loading="lazy"></a><figcaption>Listing page: Variant — Z–A. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<details class="sort-example"><summary>Listing page · Individual purchase</summary><p>Orders the calculated one-item cost. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Individual purchase — Low–High</h4>
+<figure class=""><a href="../images/guide/listing-total-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-total-asc.jpg" alt="Listing page: Individual purchase — Low–High. Captured 12 November 2026." loading="lazy"></a><figcaption>Listing page: Individual purchase — Low–High. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Individual purchase — High–Low</h4>
+<figure class=""><a href="../images/guide/listing-total-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-total-desc.jpg" alt="Listing page: Individual purchase — High–Low. Captured 12 November 2026." loading="lazy"></a><figcaption>Listing page: Individual purchase — High–Low. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<details class="sort-example"><summary>Listing page · Bulk purchase*</summary><p>Orders the per-item offer estimate. The screenshots show the actual rendered entries and active highlight.</p>
+<div class="sort-images"><div><h4>Bulk purchase* — Low–High</h4>
+<figure class=""><a href="../images/guide/listing-spool-asc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-spool-asc.jpg" alt="Listing page: Bulk purchase* — Low–High. Captured 12 November 2026." loading="lazy"></a><figcaption>Listing page: Bulk purchase* — Low–High. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+<div><h4>Bulk purchase* — High–Low</h4>
+<figure class=""><a href="../images/guide/listing-spool-desc.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/listing-spool-desc.jpg" alt="Listing page: Bulk purchase* — High–Low. Captured 12 November 2026." loading="lazy"></a><figcaption>Listing page: Bulk purchase* — High–Low. Captured 12 November 2026. Click to open the complete screenshot.</figcaption>
+</figure>
+</div>
+</div>
+</details>
+<section id="controls"><p class="eyebrow">09 / CONTROL REFERENCE</p>
+<h2>What every control does</h2>
+<div class="table-wrap"><table><thead><tr><th>Control</th><th>Action</th></tr>
+</thead>
+<tbody><tr><td>Open / Close rail</td><td>Expand or collapse the finder; the rail stays protected. Escape inside the finder can collapse it when no scan or nested popup needs that key.</td></tr>
+<tr><td>Previous / Next</td><td>Use eBay’s pagination links. Page N is the current page, not a scan count.</td></tr>
+<tr><td>Settings</td><td>Appearance, scanning and storage. Drag its header to move the dialog. Settings ⓘ popups explain individual options.</td></tr>
+<tr><td>User guide</td><td>Open this guide in a new tab. Also available by right-clicking the Chrome extension icon.</td></tr>
+<tr><td>What’s new</td><td>Open release notes from the extension icon’s right-click menu.</td></tr>
+<tr><td>Filters</td><td>Show/hide the input controls while retaining applied filters.</td></tr>
+<tr><td>Apply filters / Enter</td><td>Apply input values and recalculate matching results and averages.</td></tr>
+<tr><td>Sort by</td><td>Immediately choose a field and direction; remembered separately for search and listing pages.</td></tr>
+<tr><td>Scan</td><td>Start user-initiated work or resume the queue. Reuse eligible cache entries; keep completed work.</td></tr>
+<tr><td>Stop / Esc during a scan</td><td>Pause scanning and automatic processing. Keep completed data and pending work.</td></tr>
+<tr><td>Retry / Skip in scan tab</td><td>Retry the same blocked/unreadable listing after resolving the page, or skip it.</td></tr>
+<tr><td>Results / Hidden / Out of stock variants</td><td>Expand or collapse the corresponding group. Hidden and Out of stock start collapsed.</td></tr>
+<tr><td>Could not check</td><td>Inspect failed or skipped candidates and their reported reason.</td></tr>
+<tr><td>ⓘ / experimental marker</td><td>Read price, cache or control explanations without opening the listing.</td></tr>
+<tr><td>Photo corner ⓘ / Close</td><td>Open full tile details from Photos only; Close dismisses the panel.</td></tr>
+<tr><td>Clear cache / Refresh</td><td>Delete one whole listing’s saved data, or actively reread that listing.</td></tr>
+<tr><td>Hide duration / Hide from results / Unhide</td><td>Select a period and hide every variant, or restore the listing immediately.</td></tr>
+<tr><td>Price banner Close</td><td>Dismiss the persistent opened-variant price-change notice.</td></tr>
+<tr><td>Retry cache save</td><td>Retry a failed save on the listing page.</td></tr>
+<tr><td>Purge all cache</td><td>Delete saved listing data and scan snapshots. Keep preferences, hidden choices and missing IDs.</td></tr>
+<tr><td>Clear remembered missing listings</td><td>Forget every remembered missing ID so scans may attempt those listings again.</td></tr>
+<tr><td>Reset / No / Yes</td><td>Ask before restoring settings defaults. No cancels; Yes resets preferences, including both page types’ view and sort choices. It does not purge saved listings.</td></tr>
+<tr><td>Done</td><td>Close Settings after pending saves. Changes save automatically.</td></tr>
+<tr><td>Send feedback</td><td>Open an email draft addressed to the extension’s feedback address with the version in the subject.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="settings"><p class="eyebrow">10 / SETTINGS REFERENCE</p>
+<h2>Every option and its default</h2>
+<p>Open Settings from either page. The screenshot shows an existing user’s choices, <strong>not factory defaults</strong>. The table below gives the defaults. Hover, focus or click each ⓘ for formatted help.</p>
+<figure class="narrow-shot"><a href="../images/guide/settings-all.jpg" target="_blank" rel="noopener noreferrer"><img src="../images/guide/settings-all.jpg" alt="Complete Settings: both view selectors, scan mode, retention, parallel count and storage controls." loading="lazy"></a><figcaption>Complete Settings: both view selectors, scan mode, retention, parallel count and storage controls. Click to open the complete screenshot.</figcaption>
+</figure>
+<div class="table-wrap"><table><thead><tr><th>Setting</th><th>Choices / default</th><th>Effect</th></tr>
+</thead>
+<tbody><tr><td>Dock side</td><td>Left / Right; default Right.</td><td>Choose the side of the window.</td></tr>
+<tr><td>Dock width</td><td>25%, 50%, 75%, 100%; default 25%.</td><td>Open width; dragging can save a custom value.</td></tr>
+<tr><td>Search results view</td><td>Tiles, Single lines, Photos only (default).</td><td>Saved independently of listing pages.</td></tr>
+<tr><td>Listing page view</td><td>Tiles (default), Single lines, Photos only.</td><td>Saved independently of search results.</td></tr>
+<tr><td>Resize eBay</td><td>Off (default) / On.</td><td>Overlay or place beside the page; collapsed rail always protected.</td></tr>
+<tr><td>Scanning mode</td><td>Background, Visible tabs, Mixed (default).</td><td>How new/expired listings are retrieved. Applied on next Scan.</td></tr>
+<tr><td>Maximum saved listing age</td><td>1 day, 1 week, 1 month = 30 days (default), Never dropped.</td><td>Retrieval age for cache reuse, not time since last display.</td></tr>
+<tr><td>Listings in parallel</td><td>1–999; default 5.</td><td>Background count. More than 20 produces a warning. Visible tabs shows 1 without overwriting your saved count. Mixed falls back to 1 only for visible recovery.</td></tr>
+<tr><td>Always show all cached data</td><td>Off (default) / On.</td><td>Load all unexpired data for this eBay marketplace without an active scan.</td></tr>
+<tr><td>Local storage used</td><td>Read-only live size.</td><td>Includes local extension data. Purge all cache is alongside it.</td></tr>
+<tr><td>Missing listings</td><td>Clear remembered missing listings button.</td><td>Forgets all confirmed-missing IDs; valid cached listings stay.</td></tr>
+<tr><td>Sort by (sidebar)</td><td>Individual purchase — Low–High by default.</td><td>Choice and direction remembered independently for each page type.</td></tr>
+<tr><td>AND / OR (search filters)</td><td>AND by default.</td><td>Combine the two non-empty filter fields.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="performance"><p class="eyebrow">11 / LARGE COLLECTIONS</p>
+<h2>Why loading and scrolling are lighter</h2>
+<p>Version 1.4 separates reading saved data, filtering/sorting and drawing results:</p>
+<ol><li><strong>Asynchronous cache loading.</strong> Listings are read in small batches, with progress shown, so the finder can respond between batches instead of waiting for one huge load.</li><li><strong>Full-data filtering and sorting.</strong> All loaded variants stay available in memory. Large filter/sort operations yield between short processing slices, letting the browser handle input and painting.</li><li><strong>Only a small window is drawn.</strong> Search results, Hidden and Out of stock render roughly two screenfuls at a time. Scrolling replaces off-screen tiles while spacers preserve the full scroll range. Closed groups defer their tiles; photo grids account for the number of columns.</li><li><strong>Fewer repeated requests.</strong> Retained cache entries and deduplicated listing IDs avoid unnecessary retrieval. Saved search snapshots keep listing references instead of duplicating huge variant arrays.</li></ol>
+<p>If five tiles fit on screen, roughly ten are drawn around your position; the exact count depends on their size and grid columns. <strong>A filter still searches every loaded variant.</strong> Scrolling itself does not fetch listings from eBay.</p>
+<p>This reduces page elements and repeated work; it does not make the dataset free to store or process. Initial loading time and memory use still depend on cache size, device and settings. There is no fixed speed-up claim or timed benchmark.</p>
+</section>
+<section id="help"><p class="eyebrow">12 / TROUBLESHOOTING</p>
+<h2>When something looks wrong</h2>
+<details><summary>No results appear.</summary><p>Open Results if it is collapsed. Clear Variant and Listing, then Apply filters. Expand Out of stock to check availability. Enable Always show all cached data to use a wider collection, or click Scan for new listings.</p>
+</details>
+<details><summary>Pagination did not scan anything.</summary><p>You must click Scan first during the live page visit. After Stop, click Scan to resume. Repeated, cached or remembered-missing listings may add no active work. A full reload/new query can reset the live queue.</p>
+</details>
+<details><summary>I reopened Chrome and see old prices.</summary><p>Cached means saved, not freshly retrieved. Check its timestamp. Open the listing or use Refresh for current data. Merely displaying or scanning within retention does not renew that entry.</p>
+</details>
+<details><summary>eBay asks for verification or a scan fails.</summary><p>Use Visible tabs or Mixed and resolve the page directly. Retry retries that listing; Skip moves on; Stop pauses. Reduce background parallel requests if needed. No scan mode guarantees freedom from eBay limits.</p>
+</details>
+<details><summary>The same photo appears on several entries.</summary><p>Different variants/listings may share eBay images. Open ⓘ to verify the title, variant and link. Failed photos should show a placeholder rather than another row’s picture.</p>
+</details>
+<details><summary>Opening a cached listing changes its position.</summary><p>Fresh prices can alter its sort position. The saved listing is updated and an idle search tab reloads changes when activated. Check the price-change notice and saved timestamp.</p>
+</details>
+<details><summary>My basket costs something different.</summary><p>Verify variant, pack/weight, quantity, coupon eligibility, saving cap, minimum spend, offer combination and delivery destination. Conditional estimates do not guarantee the checkout price.</p>
+</details>
+<details><summary>The average changed when I filtered.</summary><p>It is recalculated from matching in-stock variants for each listing, not every item in the entire collection. Discounts, coupon caps, different requirements and known postage can affect it.</p>
+</details>
+<details><summary>A listing I hid is missing.</summary><p>Expand Hidden and choose Unhide, or wait for the selected duration to expire. Hiding affects every variant, including unavailable ones.</p>
+</details>
+<details><summary>A readable listing was remembered as missing.</summary><p>Open it normally to allow a fresh successful read to restore it. Alternatively clear all remembered missing IDs in Settings; you need not purge valid data.</p>
+</details>
+<details><summary>The listing dropdowns did not select.</summary><p>Wait for eBay to finish loading, use the offered reload link, or select its options manually. Some layouts do not support automatic selection.</p>
+</details>
+<details><summary>A cache save failed.</summary><p>Read the reported reason, try Retry cache save, and inspect Local storage used. Purge all cache only if you want to delete saved results. A retry does not guarantee success if storage or the extension connection remains unavailable.</p>
+</details>
+<details><summary>New controls do not appear after an unpacked update.</summary><p>Reload the extension on Chrome’s Extensions page, then refresh the eBay tab. Old content scripts can remain until the page is refreshed. If you see a reconnect message, refresh that page.</p>
+</details>
+</section>
+<footer>eBay Filament finder · Version 1.4 · Interface screenshots captured 12 November 2026.<br>Real extension-rendered listing examples, not mockups. Cached ages, prices, offers and stock are examples from the capture and may change.</footer>
+</main></div>
+</body></html>

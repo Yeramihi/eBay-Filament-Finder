@@ -1,0 +1,34 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const vm=require('node:vm');
+const fs=require('node:fs');
+const source=fs.readFileSync(`${__dirname}/../js/search-view.js`,'utf8');
+for(const photos of [false,true]) test(`large ${photos?'photo-grid':'tile'} results keep about two viewport heights in the DOM while scrolling`,()=>{
+  const frames=new Map(),listeners={},section={open:true,hidden:false,addEventListener(){}};let sequence=0;
+  const viewport={clientWidth:320,clientHeight:500,scrollTop:0,getBoundingClientRect:()=>({top:0,bottom:500}),addEventListener:(name,fn)=>listeners[name]=fn,removeEventListener:name=>delete listeners[name]};
+  const container={clientWidth:320,children:[],classList:{add(){},contains:name=>photos&&name==='photos-only'},setAttribute(){},closest:()=>section,contains(node){return this.children.includes(node);},replaceChildren(...nodes){this.children=nodes;},getBoundingClientRect:()=>({top:-viewport.scrollTop,bottom:1080000-viewport.scrollTop})};
+  const observer=class {observe(){}disconnect(){}};
+  const context={performance,setTimeout,requestAnimationFrame:fn=>{frames.set(++sequence,fn);return sequence;},cancelAnimationFrame:id=>frames.delete(id),ResizeObserver:observer,MutationObserver:observer,document:{createElement:()=>({style:{},setAttribute(){}})}};
+  vm.runInNewContext(source,context);
+  const rows=Array.from({length:10000},(_,index)=>({url:String(index),index}));
+  const view=context.EbaySearchView.create(viewport,row=>({row,setAttribute(){},getBoundingClientRect:()=>({height:100})}),()=>{});
+  const paint=()=>{for(let pass=0;frames.size&&pass<10;pass++){const callbacks=[...frames.values()];frames.clear();for(const callback of callbacks)callback();}};
+  view.set(container,rows,{});paint();
+  let tiles=container.children.filter(node=>node.row);
+  assert.ok(tiles.length>=(photos?24:8)&&tiles.length<=(photos?36:12),`Rendered ${tiles.length} tiles for a 500px viewport`);
+  assert.equal(rows.length,10000);assert.equal(tiles[0].row.index,0);
+  [rows[0],rows[1]]=[rows[1],rows[0]];listeners.scroll();paint();
+  tiles=container.children.filter(node=>node.row);assert.equal(tiles[0].row.index,1);assert.equal(tiles[1].row.index,0);
+  viewport.scrollTop=photos?200000:500000;listeners.scroll();paint();tiles=container.children.filter(node=>node.row);
+  assert.ok(tiles.length<=(photos?36:12));assert.ok(tiles[0].row.index>4000);
+  view.dispose();assert.equal(frames.size,0);assert.equal(listeners.scroll,undefined);
+});
+test('cooperative sort uses the complete dataset and preserves equal-key order',async()=>{
+  let yields=0;const context={performance,setTimeout:(callback,delay)=>{yields++;return setTimeout(callback,delay);}};
+  vm.runInNewContext(source,context);
+  const rows=Array.from({length:40000},(_,index)=>({index,key:index%17}));
+  const sorted=await context.EbaySearchView.sort(rows,(a,b)=>a.key-b.key,()=>true);
+  assert.equal(sorted.length,40000);assert.ok(yields>0);
+  for(let i=1;i<sorted.length;i++) assert.ok(sorted[i-1].key<sorted[i].key||sorted[i-1].index<sorted[i].index);
+  assert.equal(rows[0].index,0);
+});
