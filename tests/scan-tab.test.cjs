@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-function setup({title='Filament listing',rows=[{label:'PLA',inStock:true}]}={}){
+function setup({title='Filament listing',rows=[{label:'PLA',inStock:true}],relevant}={}){
   let clock=0,interval,reloads=0,reads=0;
   const windowHandlers={};
   const nodes=new Map(),messages=[];
@@ -20,6 +20,7 @@ function setup({title='Filament listing',rows=[{label:'PLA',inStock:true}]}={}){
       return {status:message.status||'loading'};
     }}}
   };
+  if(relevant!==undefined) context.EbayVariants={isMissingListing:()=>false,listingFilamentInfo:()=>({relevant})};
   context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   const ready=vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/scan-tab.js`,'utf8'),context);
   return {ready,get,messages,document,windowHandlers,setRows:r=>rows=r,get reads(){return reads;},get reloads(){return reloads;},advance:async ms=>{clock+=ms;await interval();await tick();}};
@@ -63,4 +64,11 @@ test('Escape in a visible scan tab requests Stop, including while waiting betwee
   h.windowHandlers.keydown({key:'Escape',preventDefault:()=>prevented=true,stopImmediatePropagation(){}});await tick();
   assert.equal(prevented,true);
   assert.ok(h.messages.some(m=>m.type==='visible-scan-action'&&m.action==='stop'));
+});
+
+test('visible reader skips unrelated listings before reading or saving variant data',async()=>{
+  const h=setup({title:'TPU phone case',relevant:false});await h.ready;await tick();
+  assert.equal(h.messages.some(message=>message.status==='irrelevant'),true);
+  assert.equal(h.messages.some(message=>message.status==='ready'),false);
+  assert.equal(h.reads,0);
 });

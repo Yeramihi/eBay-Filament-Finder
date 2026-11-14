@@ -562,25 +562,346 @@ globalThis.EbayVariants = (() => {
       priceCollator.compare(String(a.title || ''),String(b.title || '')) ||
       priceCollator.compare(String(a.label || ''),String(b.label || ''));
   }
-  function terms(query) {
-    // Unclosed quotes keep the remainder together while the user is typing.
-    const terms = [];
-    let term = '', quoted = false;
-    for (const char of query.toLocaleLowerCase()) {
-      if (char === '"') {
-        if (term) terms.push(term);
-        term = ''; quoted = !quoted;
-      } else if (!quoted && /\s/.test(char)) {
-        if (term) terms.push(term);
-        term = '';
-      } else term += char;
-    }
-    if (term) terms.push(term);
-    return terms;
+  function hasFilamentText(text) {
+    return /(?:^|[^\p{L}\p{N}_])filament(?=$|[^\p{L}\p{N}_])/iu.test(String(text || ''));
   }
-  function matches(label, words) {
-    const text = label.toLocaleLowerCase();
-    return words.every(word => text.includes(word));
+  function listingFilamentInfo(source) {
+    const text=html => String(html || '').replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,' ')
+      .replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|quot);|&#(?:x[0-9a-f]+|[0-9]+);/gi,entity=>{
+        if(entity.startsWith('&#')) {const code=entity[2].toLowerCase()==='x'?parseInt(entity.slice(3),16):parseInt(entity.slice(2),10);return code>0&&code<=0x10ffff?String.fromCodePoint(code):' ';}
+        return ' ';
+      });
+    if(typeof source !== 'string') {
+      const title=source.querySelector('h1.x-item-title__mainTitle, h1')?.textContent || source.title || '';
+      const descriptions=Array.from(source.querySelectorAll('#desc_div, #ds_div, #viTabs_0_is, .x-item-description, [itemprop="description"], meta[name="description"]'))
+        .map(node=>node.content || node.textContent || '');
+      const frame=source.querySelector('iframe#desc_ifr, iframe[src*="ebaydesc.com"]');
+      try {if(frame?.contentDocument?.body) descriptions.push(frame.contentDocument.body.textContent);} catch { /* Cross-origin descriptions are read by the worker. */ }
+      return {relevant:hasFilamentText([title,...descriptions].join(' ')),descriptionUrl:frame?.src || frame?.getAttribute('data-src') || ''};
+    }
+    const title=[...source.matchAll(/<(?:title|h1)\b[^>]*>([\s\S]*?)<\/(?:title|h1)\s*>/gi)].map(match=>text(match[1]));
+    const descriptions=[...source.matchAll(/<(?:div|section)\b[^>]*\bid\s*=\s*["'](?:desc_div|ds_div|viTabs_0_is)["'][^>]*>([\s\S]*?)<\/(?:div|section)>/gi)].map(match=>text(match[1]));
+    for(const match of source.matchAll(/<meta\b[^>]*>/gi)) {
+      if(/\bname\s*=\s*["']description["']/i.test(match[0])) descriptions.push(text(/\bcontent\s*=\s*(["'])([\s\S]*?)\1/i.exec(match[0])?.[2]));
+    }
+    const frame=[...source.matchAll(/<iframe\b[^>]*>/gi)].find(match=>/\bid\s*=\s*["']?desc_ifr\b|ebaydesc\.com/i.test(match[0]));
+    const descriptionUrl=frame ? /\b(?:src|data-src)\s*=\s*(["'])(.*?)\1/i.exec(frame[0])?.[2]?.replace(/&amp;/g,'&') || '' : '';
+    return {relevant:hasFilamentText([...title,...descriptions].join(' ')),descriptionUrl};
+  }
+  function ambiguousFilamentTypes(row) {
+    if (!row.singleItem || row.hiddenPreview) return [];
+    const title = String(row.title || row.label || '');
+    // Count material families, not colours, finishes or repeated mentions.
+    // Boundaries exclude partial words (e.g. PLA in plate, ABS in absorbs).
+    const families = [
+      ['PLA', 'PLA'], ['PETG', 'PETG'], ['ASA', 'ASA'], ['ABS', 'ABS'],
+      ['PA / Nylon', 'PA(?:6|12|66|612)?|NYLON'], ['TPU', 'TPU']
+    ];
+    const found = families.filter(([,pattern]) => new RegExp(`(?:^|[^a-z0-9])(?:${pattern})(?=$|[^a-z0-9])`, 'i').test(title)).map(([name]) => name);
+    return found.length > 1 ? found : [];
+  }
+  function formatQueryInput(value, cursor, character) {
+    // Work with complete operands, including quoted phrases and brackets.
+    const tokens = [];
+    let quoted = false, start = -1;
+    for (let i = 0; i < value.length; i++) {
+      const char = value[i];
+      if (char === '"') { if (start < 0) start = i; quoted = !quoted; continue; }
+      if (!quoted && (/\s/.test(char) || '()!'.includes(char))) {
+        if (start >= 0) { tokens.push({start,end:i,text:value.slice(start,i)}); start = -1; }
+        if ('()!'.includes(char)) tokens.push({start:i,end:i+1,text:char});
+      } else if (start < 0) start = i;
+    }
+    if (start >= 0) tokens.push({start,end:value.length,text:value.slice(start)});
+    // Once a new operand starts after a leading OR chain, make its implicit
+    // AND boundary visible. Only react to new typing, never bracket deletion.
+    if (character && !/\s/.test(character)) {
+      const current=tokens.findIndex(token => token.end === cursor && token.start < cursor);
+      const nextToken=tokens[current];
+      const operatorPrefix=text => ['OR','AND','NOT'].some(word => word.startsWith(text.toUpperCase()));
+      const starting=nextToken && (nextToken.text.length === character.length ||
+        operatorPrefix(nextToken.text.slice(0,-character.length)));
+      if (starting && !operatorPrefix(nextToken.text) && current > 0 &&
+          /\s/.test(value[nextToken.start-1])) {
+        function afterOperand(index) {
+          while (tokens[index] && /^(NOT|!)$/i.test(tokens[index].text)) index++;
+          if (!tokens[index] || /^(AND|OR|\))$/i.test(tokens[index].text)) return -1;
+          if (tokens[index].text !== '(') return index+1;
+          let depth=0;
+          for (;index<current;index++) {
+            if (tokens[index].text === '(') depth++;
+            if (tokens[index].text === ')' && --depth === 0) return index+1;
+          }
+          return -1;
+        }
+        let end=afterOperand(0), hasOr=false;
+        while (end > 0 && end < current && /^OR$/i.test(tokens[end].text)) {
+          end=afterOperand(end+1); hasOr=true;
+        }
+        if (hasOr && end === current) {
+          const begin=tokens[0].start, close=tokens[current-1].end;
+          return {value:value.slice(0,begin)+'('+value.slice(begin,close)+')'+value.slice(close),cursor:cursor+2};
+        }
+      }
+    }
+    const operatorIndex = tokens.findIndex(token => token.end <= cursor &&
+      ((/^(OR|NOT)$/i.test(token.text) && /^\s+$/.test(value.slice(token.end,cursor)) && character === ' ') ||
+       (token.text === '!' && token.end === cursor && character === '!')));
+    if (operatorIndex < 0) return null;
+    const operator = tokens[operatorIndex];
+    function operandEnd(index) {
+      if (!tokens[index] || tokens[index].text === ')' || /^(AND|OR)$/i.test(tokens[index].text)) return cursor;
+      if (tokens[index].text === '!' || /^NOT$/i.test(tokens[index].text)) return operandEnd(index+1);
+      if (tokens[index].text !== '(') return tokens[index].end;
+      let depth = 0;
+      for (let i=index;i<tokens.length;i++) {
+        if (tokens[i].text === '(') depth++;
+        if (tokens[i].text === ')' && --depth === 0) return tokens[i].end;
+      }
+      return cursor;
+    }
+    const next = tokens[operatorIndex+1];
+    // Explicitly supplied brackets already provide the requested feedback.
+    if (!/^OR$/i.test(operator.text) && next?.text === '(') return null;
+    const end = operandEnd(operatorIndex+1);
+    let begin = cursor;
+    if (/^OR$/i.test(operator.text)) {
+      const previous = tokens[operatorIndex-1];
+      if (!previous || /^(AND|OR|NOT|!|\()$/i.test(previous.text)) return null;
+      // Leave an explicitly started OR group under the user's control.
+      if (tokens[operatorIndex-2]?.text === '(') return null;
+      begin = previous.start;
+      if (previous.text === ')') {
+        let depth = 0;
+        for (let i=operatorIndex-1;i>=0;i--) {
+          if (tokens[i].text === ')') depth++;
+          if (tokens[i].text === '(' && --depth === 0) { begin=tokens[i].start; break; }
+        }
+      }
+      // A leading OR expression needs no wrapper. Ignore leading whitespace
+      // and avoid rewrapping a continuation of an existing OR chain.
+      if (!value.slice(0,begin).trim()) return null;
+      const before = tokens.filter(token => token.end <= begin).at(-1);
+      if (before && (before.text === '(' || /^OR$/i.test(before.text))) return null;
+    }
+    return {value:value.slice(0,begin)+'('+value.slice(begin,end)+')'+value.slice(end),
+      cursor:cursor+1};
+  }
+  const maxQueryLength = 512;
+  function attachQueryFormatting(input) {
+    input.maxLength=maxQueryLength;
+    function formatInsertedCharacter(character) {
+      const cursor = input.selectionStart, value = input.value;
+      // A user-started subgroup needs its own closing bracket when inserted
+      // immediately before the outer group's automatically supplied bracket.
+      if (character === '(' && value[cursor] === ')' && value.length < maxQueryLength) {
+        input.value=value.slice(0,cursor)+')'+value.slice(cursor);
+        input.setSelectionRange(cursor,cursor);
+        return;
+      }
+      const formatted = formatQueryInput(value,cursor,character);
+      if (!formatted || formatted.value.length > maxQueryLength) return;
+      input.value=formatted.value;
+      input.setSelectionRange(formatted.cursor,formatted.cursor);
+    }
+    input.addEventListener('input', event => {
+      if (event.isComposing || event.inputType !== 'insertText' || input.selectionStart !== input.selectionEnd) return;
+      formatInsertedCharacter(event.data);
+    });
+    input.addEventListener('paste',event=>{
+      if (!event.clipboardData) return;
+      event.preventDefault();
+      // Replay only the inserted portion, preserving the untouched suffix and
+      // applying the same cursor movement, pairing and length rules as typing.
+      const pasted=event.clipboardData.getData('text/plain').slice(0,maxQueryLength)
+        .replace(/\r\n|[\r\n]/g,' ');
+      let cursor=input.selectionStart;
+      input.value=input.value.slice(0,cursor)+input.value.slice(input.selectionEnd);
+      input.setSelectionRange(cursor,cursor);
+      for (const character of pasted) {
+        cursor=input.selectionStart;
+        if (character === ')' && input.value[cursor] === ')') {
+          input.setSelectionRange(cursor+1,cursor+1);
+          continue;
+        }
+        if (input.value.length+character.length > maxQueryLength) break;
+        input.value=input.value.slice(0,cursor)+character+input.value.slice(cursor);
+        input.setSelectionRange(cursor+character.length,cursor+character.length);
+        formatInsertedCharacter(character);
+      }
+      // Notify clear-button visibility and validation once after the whole paste.
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    input.addEventListener('keydown',event=>{
+      if (!event.isComposing && event.key === ')' && input.selectionStart === input.selectionEnd && input.value[input.selectionStart] === ')') {
+        event.preventDefault();
+        const cursor=input.selectionStart+1;
+        input.setSelectionRange(cursor,cursor);
+      }
+    });
+  }
+  const searchSpellings = new Map([
+    ['gray','grey'],
+    ['color','colour'], ['colors','colours'],
+    ['colored','coloured'], ['coloring','colouring'],
+    ['multicolor','multicolour'], ['multicolored','multicoloured'],
+    ['fiber','fibre'], ['fibers','fibres'], ['aluminum','aluminium'],
+    ['meter','metre'], ['meters','metres'],
+    ['millimeter','millimetre'], ['millimeters','millimetres'],
+    ['centimeter','centimetre'], ['centimeters','centimetres'],
+    ['liter','litre'], ['liters','litres'],
+    ['milliliter','millilitre'], ['milliliters','millilitres'],
+    ['mold','mould'], ['molds','moulds'],
+    ['molded','moulded'], ['molding','moulding']
+  ]);
+  const searchSingulars = new Map([
+    ['metres','metre'], ['millimetres','millimetre'], ['centimetres','centimetre'],
+    ['litres','litre'], ['millilitres','millilitre'],
+    ['grams','gram'], ['kilograms','kilogram'],
+    ['filaments','filament'], ['spools','spool'], ['rolls','roll'],
+    ['reels','reel'], ['packs','pack'], ['bundles','bundle'],
+    ['colours','colour'], ['fibres','fibre'], ['moulds','mould']
+  ]);
+  function normalizeSearchText(value) {
+    // Shared comparison form only: preserve the original input and listing text.
+    // Treat hyphens, Unicode dashes and surrounding whitespace as word spaces.
+    return String(value ?? '').replace(/[\p{Dash_Punctuation}\u2212\u00ad]/gu,' ')
+      .replace(/\s+/gu,' ').trim().toLowerCase()
+      .replace(/[\p{L}\p{N}_]+/gu, word => {
+        const spelling=searchSpellings.get(word) || word;
+        return searchSingulars.get(spelling) || spelling;
+      });
+  }
+  function terms(query) {
+    // Compile once per filter, then reuse for every loaded variant. OR binds
+    // tighter than AND: PLA OR PETG silk means (PLA OR PETG) AND silk.
+    const tokens = [];
+    const invalid = (message='Check the search logic: an operator needs a search term.') => [{type:'invalid',message}];
+    if (String(query || '').length > maxQueryLength) return invalid('Maximum 512 characters per search field.');
+    const source = normalizeSearchText(query);
+    let index = 0;
+    while (index < source.length) {
+      const char = source[index];
+      if (/\s/.test(char)) { index++; continue; }
+      if ('()!'.includes(char)) {
+        tokens.push({type:char === '!' ? 'NOT' : char}); index++; continue;
+      }
+      let value = '', quoted = false;
+      while (index < source.length && !/\s/.test(source[index]) && !'()!'.includes(source[index])) {
+        if (source[index] === '"') {
+          quoted = true; index++;
+          // An unfinished quote treats the rest as a phrase while typing.
+          while (index < source.length && source[index] !== '"') value += source[index++];
+          if (source[index] === '"') index++;
+        } else value += source[index++];
+      }
+      const operator = value.toUpperCase();
+      if (!quoted && ['AND','OR','NOT'].includes(operator)) tokens.push({type:operator});
+      else if (value) {
+        // Each % requires at least one character, including whitespace.
+        const pattern = value.split('%').map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s\\S]+');
+        // Plain terms and phrases match complete words. Wildcards explicitly
+        // consume extra characters, while the full pattern keeps word boundaries.
+        tokens.push(value.includes('%') ? {type:'term',wildcard:Array.from(value)} :
+          {type:'term',pattern:new RegExp(`(?<![\\p{L}\\p{N}_])(?:${pattern})(?![\\p{L}\\p{N}_])`,'iu')});
+      } else return invalid('Enter some text inside the quotation marks.');
+    }
+    const output = [], operators = [];
+    const precedence = {AND:1, OR:2, NOT:3};
+    let needsOperand = true;
+    function pushOperator(type) {
+      while (operators.length && operators.at(-1) !== '(' && precedence[operators.at(-1)] >= precedence[type]) {
+        output.push({type:operators.pop()});
+      }
+      operators.push(type);
+    }
+    for (const token of tokens) {
+      if (token.type === 'term' || token.type === '(' || token.type === 'NOT') {
+        if (!needsOperand) pushOperator('AND');
+        if (token.type === 'term') { output.push(token); needsOperand = false; }
+        else { operators.push(token.type); needsOperand = true; }
+      } else if (token.type === ')') {
+        if (needsOperand) return invalid('Enter a search term before the closing bracket.');
+        while (operators.length && operators.at(-1) !== '(') output.push({type:operators.pop()});
+        if (operators.pop() !== '(') return invalid('Unexpected closing bracket: remove it or add an opening bracket.');
+        needsOperand = false;
+      } else {
+        if (needsOperand) return invalid();
+        pushOperator(token.type); needsOperand = true;
+      }
+    }
+    if (!tokens.length) return [];
+    if (needsOperand) return invalid();
+    while (operators.length) {
+      const type = operators.pop();
+      if (type === '(') return invalid('Missing closing bracket: add ) to complete the group.');
+      output.push({type});
+    }
+    return output;
+  }
+  function attachClearInput(input, button) {
+    const sync=()=>{button.hidden=!input.value;};
+    input.addEventListener('input',sync);
+    button.addEventListener('click',()=>{
+      input.value='';
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      input.focus();
+    });
+    sync();
+    return sync;
+  }
+  function queryError(query) {
+    if (String(query || '').length > maxQueryLength) return 'Maximum 512 characters per search field.';
+    if ((String(query || '').match(/"/g) || []).length % 2) return 'Missing closing quotation mark: add " to complete the phrase.';
+    return terms(query).find(token => token.type === 'invalid')?.message || '';
+  }
+  function attachQueryValidation(input, error) {
+    function clear() {
+      error.textContent=''; error.hidden=true;
+      input.setAttribute('aria-invalid','false');
+    }
+    clear();
+    input.addEventListener('input',clear);
+    return () => {
+      const message=queryError(input.value);
+      error.textContent=message; error.hidden=!message;
+      input.setAttribute('aria-invalid',String(Boolean(message)));
+      return !message;
+    };
+  }
+  function wildcardMatches(text, pattern) {
+    // Rolling dynamic programming: O(text length * pattern length) work,
+    // O(pattern length) memory, with no regex backtracking or recursion.
+    const chars=Array.from(text), size=pattern.length;
+    let previous=new Uint8Array(size+1), current=new Uint8Array(size+1);
+    const word=char => char !== undefined && /[\p{L}\p{N}_]/u.test(char);
+    for (let index=0;index<chars.length;index++) {
+      previous[0]=!word(chars[index-1]);
+      current[0]=0;
+      for (let part=1;part<=size;part++) {
+        current[part]=pattern[part-1] === '%'
+          ? previous[part-1] || previous[part]
+          : previous[part-1] && chars[index] === pattern[part-1];
+      }
+      if (current[size] && !word(chars[index+1])) return true;
+      [previous,current]=[current,previous];
+    }
+    return false;
+  }
+  function matches(label, expression) {
+    const text = normalizeSearchText(label);
+    const stack = [];
+    for (const token of expression) {
+      // Retain compatibility with callers supplying simple fragment arrays.
+      if (typeof token === 'string') stack.push(text.toLowerCase().includes(token.toLowerCase()));
+      else if (token.type === 'term') stack.push(token.wildcard ? wildcardMatches(text,token.wildcard) : token.pattern.test(text));
+      else if (token.type === 'NOT') stack.push(!stack.pop());
+      else if (token.type === 'AND' || token.type === 'OR') {
+        const right = stack.pop(), left = stack.pop();
+        stack.push(token.type === 'AND' ? left && right : left || right);
+      } else return false;
+    }
+    return stack.every(Boolean);
   }
   function isMissingListing(source) {
     if(typeof source!=='string') {
@@ -593,5 +914,5 @@ globalThis.EbayVariants = (() => {
     const title=/<h[12]\b[^>]*data-testid\s*=\s*(?:"dp-error-banner-container-title-[^"]*"|'dp-error-banner-container-title-[^']*'|dp-error-banner-container-title-[^\s>]+)[^>]*>([\s\S]*?)<\/h[12]\s*>/i.exec(markup);
     return !!title && /^we looked everywhere!?$/i.test(title[1].replace(/<[^>]*>/g,' ').trim()) && /looks like this page is missing\./i.test(markup.slice(title.index,title.index+1500).replace(/<[^>]*>/g,' '));
   }
-  return { getBannerOffer,withBannerOffers,isMissingListing, couponLabel, matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, terms, matches };
+  return { getBannerOffer,withBannerOffers,isMissingListing, couponLabel, matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, hasFilamentText, listingFilamentInfo, ambiguousFilamentTypes, formatQueryInput, attachQueryFormatting, normalizeSearchText, queryError, attachQueryValidation, attachClearInput, terms, matches };
 })();

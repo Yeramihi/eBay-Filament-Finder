@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "eBay Filament finder",
-  "version": "1.4",
+  "version": "1.5",
   "description": "Find in-stock filament variants across eBay search results and compare listing variations.",
   "content_scripts": [
     {
@@ -52,7 +52,8 @@
   },
   "host_permissions": [
     "https://*.ebay.co.uk/*",
-    "https://*.ebay.com/*"
+    "https://*.ebay.com/*",
+    "https://*.ebaydesc.com/*"
   ],
   "minimum_chrome_version": "114",
   "permissions": [
@@ -61,7 +62,7 @@
     "contextMenus"
   ],
   "action": {
-    "default_title": "eBay Filament finder 1.4",
+    "default_title": "eBay Filament finder 1.5",
     "default_icon": {
       "16": "images/icons/icon-16.png",
       "32": "images/icons/icon-32.png",

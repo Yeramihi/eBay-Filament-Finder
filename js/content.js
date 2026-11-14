@@ -16,6 +16,12 @@
     return true;
   }
   try {if(await removeMissingListing()) return;} catch(error) {listingMissing=false;EbayRuntime.report(error);}
+  let filamentRelevant=EbayVariants.listingFilamentInfo(document).relevant;
+  if(!filamentRelevant) {
+    try {filamentRelevant=(await EbayRuntime.sendMessage({type:'finder-listing-relevance',html:document.documentElement.outerHTML}))?.relevant===true;} catch {}
+  }
+  let manuallyOpened=false, cacheSuppressed=false;
+  EbayDock.setAutoCollapsed(!filamentRelevant);
   let comparisonBaseline;
   try {
     const id=location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
@@ -137,24 +143,28 @@
           color: #64748b;
         }
         .apply-filters { margin: 0 9px 6px; }
+        .query-input{position:relative;min-width:0}.query-input input{width:100%;padding-right:72px}.query-help{position:absolute;right:36px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:0;background:transparent;color:#355779;font:600 18px system-ui;cursor:pointer}.query-help:focus-visible{outline:2px solid #2563eb;border-radius:5px}.clear-query{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:32px;height:32px;padding:0;border:0;background:transparent;color:#64748b;font:22px/1 system-ui;cursor:pointer}.clear-query:focus-visible{outline:2px solid #2563eb;border-radius:5px}.clear-query span{display:inline-flex;align-items:center;justify-content:center;border:1px solid currentColor;border-radius:50%;width:20px;height:20px}input[aria-invalid="true"]{border-color:#b91c1c}
+        .query-error { color:#b91c1c;font-size:11px;margin:4px 0 0; }
         .status.error { color: #b91c1c; }
         [hidden] { display: none !important; }
       </style>
       <section class="panel finder-layout" aria-label="eBay variant prices">
         <div class="finder-toolbar" id="finder-toolbar">
           <div class="filter">
-            <input
+            <div class="query-input"><input
               type="text"
 
-              aria-label="Filter variant names: all words, in any order"
-              autocomplete="off"
+              aria-label="Filter variant names"
+              aria-describedby="variant-query-error"
+              autocomplete="off" maxlength="512"
               spellcheck="false"
-            >
+            ><button type="button" class="query-help" aria-label="Search input rules">?</button><button type="button" class="clear-query" aria-label="Clear variant search" hidden><span aria-hidden="true">×</span></button></div>
+            <p class="query-error" id="variant-query-error" role="alert" hidden></p>
           </div>
           <button class="apply-filters finder-button" type="button">Apply filters</button>
           <div class="status" role="status" aria-live="polite"></div>
         </div>
-        <div class="finder-results"><div class="price-change-status status error" role="alert" hidden></div><div class="cache-status status" role="status" aria-live="polite"><span></span> <button type="button" class="cache-retry" hidden>Retry cache save</button></div><div class="finder-entries"></div></div>
+        <div class="finder-results"><div class="price-change-status status error" role="alert" hidden></div><div class="cache-status status" role="status" aria-live="polite"><span></span> <button type="button" class="cache-retry" hidden>Retry cache save</button><button type="button" class="cache-remove finder-button">Remove from cache</button></div><div class="finder-entries"></div></div>
       </section>
     `;
 
@@ -162,6 +172,18 @@
     updatePriceNotice=(message,tone='mixed')=>{priceStatus.textContent=message;priceStatus.hidden=!message;priceStatus.style.color=priceTones[tone].text;};
     const cacheStatus=root.querySelector('.cache-status');
     const cacheRetry=root.querySelector('.cache-retry');
+    const cacheRemove=root.querySelector('.cache-remove');
+    cacheRemove.addEventListener('click',async()=>{
+      cacheSuppressed=true;clearTimeout(cacheSaveTimer);cacheCandidate=undefined;cacheRemove.disabled=true;
+      try {
+        // Delete after any already-started write, so it cannot restore this entry.
+        while(cacheSaving) await new Promise(resolve=>setTimeout(resolve,25));
+        const response=await EbayRuntime.sendMessage({type:'finder-cache-delete',url:listingUrl});
+        if(!response?.removed) throw new Error(response?.error || 'Could not remove the saved listing.');
+        savedSignature=undefined;updateCacheNotice('Removed from cache. This page will not save it again automatically.');
+      } catch(error) {updateCacheNotice(error.message,true);}
+      finally {cacheRemove.disabled=false;}
+    });
     updateCacheNotice=(message,error=false)=>{
       cacheStatus.querySelector('span').textContent=message;
       cacheStatus.classList.toggle('error',error);
@@ -243,10 +265,15 @@
       filters = EbayVariants.terms(input.value);
       render();
     }
+    EbayCards.searchHelp?.(root.querySelector('.query-help'));
+    const syncClear=EbayVariants.attachClearInput?.(input,root.querySelector('.clear-query')) || (()=>{});
+    const validateQuery=EbayVariants.attachQueryValidation?.(input,root.querySelector('#variant-query-error')) || (()=>true);
     function applyFilters() {
+      if (!validateQuery()) return;
       updateFilter();
       EbayDock.save({query:input.value,appliedQuery:input.value});
     }
+    EbayVariants.attachQueryFormatting?.(input);
     root.querySelector('.apply-filters').addEventListener('click',applyFilters);
     input.addEventListener('keydown',event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); applyFilters(); }
@@ -256,6 +283,7 @@
     render();
     EbayDock.ready.then(saved => {
       input.value = saved.query || "";
+      syncClear();
       filters = EbayVariants.terms(saved.appliedQuery ?? input.value);
       render();
     });
@@ -343,7 +371,7 @@
     priceWarning={host,signature};
   }
   function queueCacheSave(rows) {
-    if(listingMissing || !rows.length) return;
+    if(listingMissing || cacheSuppressed || (!filamentRelevant && !manuallyOpened) || !rows.length) return;
     const signature=JSON.stringify(rows);
     if(signature===savedSignature) return;
     if(cacheCandidate?.signature!==signature) {
@@ -356,14 +384,14 @@
     }
   }
   async function saveCacheCandidate() {
-    if(listingMissing || cacheSaving || !cacheCandidate || cacheCandidate.signature===savedSignature) return;
+    if(listingMissing || cacheSuppressed || cacheSaving || !cacheCandidate || cacheCandidate.signature===savedSignature) return;
     if(document.readyState!=='complete') {cacheSaveTimer=setTimeout(saveCacheCandidate,500);return;}
     cacheSaving=true;
     const candidate=cacheCandidate;
     candidate.attempts++;
     let saved=false;
     try {
-      const response=await EbayRuntime.sendMessage({type:'finder-cache-refresh',rows:candidate.rows,baseline:comparisonBaseline,pageOpenedAt});
+      const response=await EbayRuntime.sendMessage({type:'finder-cache-refresh',filamentVerified:filamentRelevant,manuallyIncluded:manuallyOpened,rows:candidate.rows,baseline:comparisonBaseline,pageOpenedAt});
       // Always compare with the cache captured when this document opened, not
       // with an intermediate write caused by eBay's own page hydration.
       reportedPriceChanges.clear();
@@ -377,7 +405,7 @@
       updateCacheNotice(`Could not update saved listing data: ${error.message}`,true);
     } finally {
       cacheSaving=false;
-      if(cacheCandidate!==candidate || (!saved && candidate.attempts<3)) {
+      if(!cacheSuppressed && (cacheCandidate!==candidate || (!saved && candidate.attempts<3))) {
         clearTimeout(cacheSaveTimer);
         cacheSaveTimer=setTimeout(saveCacheCandidate,1000);
       }
@@ -390,12 +418,18 @@
       removeMissingListing().catch(error=>{listingMissing=false;updateCacheNotice(error.message,true);});
       return;
     }
+    if(!filamentRelevant && EbayVariants.listingFilamentInfo(document).relevant) {filamentRelevant=true;EbayDock.setAutoCollapsed(false);}
     const rows=readListing();
     if(updateRows) updateRows(rows);
     else if(rows.length) updateRows=mount(rows);
     updatePriceWarnings(rows);
     queueCacheSave(rows);
   }
+  EbayDock.onToggle?.(collapsed=>{
+    if(collapsed || cacheSuppressed) return;
+    manuallyOpened=true;
+    queueCacheSave(readListing());
+  });
   refresh();
   const observer=new MutationObserver(records=>{
     if(records.every(record=>record.target.closest?.('#ebay-finder-dock')))return;

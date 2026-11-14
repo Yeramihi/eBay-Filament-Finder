@@ -29,7 +29,7 @@
       .finder-button.stop:enabled:hover{background:#921b23}
       .finder-button.scan:disabled,.finder-button.stop:disabled{background:#edf0f4;border-color:#c4ccd6;color:#566477;opacity:1}
       .scan-notice{margin:8px 9px;color:#64748b}
-      .filters{display:grid;gap:4px;padding:9px 9px 0}.combine{display:flex;gap:20px;padding:3px 0}.combine label{display:flex;align-items:center;gap:4px}.combine input{flex:none;width:auto;margin:0;padding:0}a{color:#174b83;text-decoration:none}a:hover{text-decoration:underline}.truncated{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}small{display:block;color:#64748b}details{padding:8px 9px}summary{cursor:pointer}li{margin:5px 0}[hidden]{display:none!important}
+      .query-input{position:relative;min-width:0}.query-input input{width:100%;padding-right:72px}.query-help{position:absolute;right:36px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:0;background:transparent;color:#355779;font:600 18px system-ui;cursor:pointer}.query-help:focus-visible{outline:2px solid #2563eb;border-radius:5px}.clear-query{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:32px;height:32px;padding:0;border:0;background:transparent;color:#64748b;font:22px/1 system-ui;cursor:pointer}.clear-query:focus-visible{outline:2px solid #2563eb;border-radius:5px}.clear-query span{display:inline-flex;align-items:center;justify-content:center;border:1px solid currentColor;border-radius:50%;width:20px;height:20px}input[aria-invalid="true"]{border-color:#b91c1c}.query-error{color:#b91c1c;font-size:11px;margin:0}.filters{display:grid;gap:4px;padding:9px 9px 0}.listing-filter{display:grid;gap:4px}.add-listing-filter{justify-self:start}.listing-filter-heading{display:flex;align-items:center;justify-content:space-between;gap:6px}a{color:#174b83;text-decoration:none}a:hover{text-decoration:underline}.truncated{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}small{display:block;color:#64748b}details{padding:8px 9px}summary{cursor:pointer}li{margin:5px 0}[hidden]{display:none!important}
     </style>
     <section class="finder-layout" aria-label="eBay Filament finder">
       <nav class="finder-pagination" aria-label="Search results pages">
@@ -39,17 +39,18 @@
       </nav>
       <div class="finder-toolbar" id="finder-toolbar" hidden>
         <div class="filters">
-          <label for="variant-query">Variant</label><input id="variant-query" autocomplete="off">
-          <div class="combine" role="radiogroup" aria-label="Combine Variant and Listing filters">
-            <label><input type="radio" name="combine" value="and" checked> AND</label>
-            <label><input type="radio" name="combine" value="or"> OR</label>
+          <label for="variant-query">Variant</label><div class="query-input"><input id="variant-query" autocomplete="off" maxlength="512" aria-describedby="variant-query-error"><button type="button" class="query-help variant-query-help" aria-label="Search input rules">?</button><button type="button" class="clear-query clear-variant-query" aria-label="Clear variant search" hidden><span aria-hidden="true">×</span></button></div><p class="query-error" id="variant-query-error" role="alert" hidden></p>
+          <button type="button" class="add-listing-filter finder-button" aria-controls="listing-filter" aria-expanded="false">+ Add listing title search</button>
+          <div class="listing-filter" id="listing-filter" hidden>
+            <div class="listing-filter-heading"><label for="listing-query">Listing title</label><button type="button" class="remove-listing-filter finder-button" aria-label="Remove listing title search">Remove</button></div>
+            <div class="query-input"><input id="listing-query" autocomplete="off" maxlength="512" aria-describedby="listing-query-error"><button type="button" class="query-help listing-query-help" aria-label="Search input rules">?</button><button type="button" class="clear-query clear-listing-query" aria-label="Clear listing title search" hidden><span aria-hidden="true">×</span></button></div><p class="query-error" id="listing-query-error" role="alert" hidden></p>
           </div>
-          <label for="listing-query">Listing</label><input id="listing-query" autocomplete="off">
         </div><div class="controls"><button type="button" class="apply-filters finder-button">Apply filters</button></div>
       </div>
       <div class="finder-results">
         <p class="scan-notice" role="status" hidden></p>
-        <details class="results" open><summary>Results</summary><div class="finder-entries"></div></details>
+        <details class="results" open><summary>Results (0)</summary><div class="finder-entries"></div></details>
+        <details class="finder-unrecognised" hidden><summary>Not recognised types</summary><p class="hidden-help">These listings have no variant choices and name multiple filament types. The actual material cannot be identified reliably.</p><div class="finder-entries"></div></details>
         <details class="finder-hidden" hidden><summary>Hidden</summary><p class="hidden-help">Whole listings hidden from results, including their out-of-stock variants. Unhide at any time; they return automatically when the selected period ends.</p><div class="finder-entries"></div></details>
         <details class="failures" hidden><summary></summary><ul></ul></details>
       </div>
@@ -81,8 +82,35 @@
   syncPagination();
   const input = root.querySelector('#variant-query');
   const listingInput = root.querySelector('#listing-query');
-  const combineButtons = [...root.querySelectorAll('[name=combine]')];
-  const combineMode = () => combineButtons.find(button => button.checked)?.value || 'and';
+  for (const field of [input,listingInput]) EbayVariants.attachQueryFormatting?.(field);
+  for (const name of ['variant','listing']) EbayCards.searchHelp?.(root.querySelector(`.${name}-query-help`));
+  const syncVariantClear=EbayVariants.attachClearInput?.(input,root.querySelector('.clear-variant-query')) || (()=>{});
+  const syncListingClear=EbayVariants.attachClearInput?.(listingInput,root.querySelector('.clear-listing-query')) || (()=>{});
+  const validateVariant=EbayVariants.attachQueryValidation?.(input,root.querySelector('#variant-query-error')) || (()=>true);
+  const validateListing=EbayVariants.attachQueryValidation?.(listingInput,root.querySelector('#listing-query-error')) || (()=>true);
+  const listingFilter = root.querySelector('#listing-filter');
+  const addListingFilter = root.querySelector('.add-listing-filter');
+  function showListingFilter(visible) {
+    listingFilter.hidden = !visible;
+    addListingFilter.hidden = visible;
+    addListingFilter.setAttribute('aria-expanded', String(visible));
+  }
+  showListingFilter(false);
+  addListingFilter.addEventListener('click', () => {
+    showListingFilter(true);
+    listingInput.focus();
+    persist();
+  });
+  root.querySelector('.remove-listing-filter').addEventListener('click', () => {
+    listingInput.value = '';
+    validateListing();
+    syncListingClear();
+    appliedListingQuery = '';
+    showListingFilter(false);
+    addListingFilter.focus();
+    persist();
+    render();
+  });
   const scan = document.createElement('button');
   scan.type = 'button';
   scan.className = 'finder-button scan';
@@ -101,7 +129,7 @@
   const resultsSection = root.querySelector('.results');
   let running = false, stopped = false, results = [], failures = [], checked = 0, total = 0;
   let sortKey = 'total', ascending = true;
-  let appliedQuery = '', appliedListingQuery = '', appliedCombine = 'and';
+  let appliedQuery = '', appliedListingQuery = '';
   let sortTouched = false;
   let userPaused = false, scanMode = 'mixed', visibleJob;
   let cacheLoading=0, scanBatch;
@@ -126,9 +154,9 @@
     scanBatch?.active.delete(listing.url);scanBatch?.finished.add(listing.url);updateScanProgress();
   }
   let scanStarted = false, scanParallel = EbaySettings.defaultParallel;
-  let showAllCache=false, scopeRefreshPending=false;
-  const pageListings=new Set(), rememberedMissing=new Set();
-  const cachePreferencesReady=EbayRuntime.local.get('finder:cache:showAll').then(saved=>{showAllCache=saved['finder:cache:showAll']===true;});
+  let showAllCache=false, scopeRefreshPending=false, automaticScan=true, automaticSession=false, startBusy=false;
+  const pageListings=new Set(), rememberedMissing=new Set(), rememberedIrrelevant=new Set();
+  const cachePreferencesReady=EbayRuntime.local.get(['finder:cache:showAll','finder:automaticScan']).then(saved=>{showAllCache=saved['finder:cache:showAll']===true;automaticScan=saved['finder:automaticScan']!==false;});
   const hiddenKey='finder:hiddenListings';
   let hiddenListings={}, hiddenTimer;
   const hiddenPending=new Set();
@@ -201,7 +229,7 @@
       const checks = [];
       if (words.length) checks.push(EbayVariants.matches(row.label, words));
       if (listingWords.length) checks.push(EbayVariants.matches(row.title || '', listingWords));
-      return !checks.length || (appliedCombine === 'or' ? checks.some(Boolean) : checks.every(Boolean));
+      return checks.every(Boolean);
       })();
       if(matches) {if(row.inStock) EbayVariants.spoolEstimate(row);visible.push(row);}
     }
@@ -237,20 +265,26 @@
       return (ascending ? order : -order) || collator.compare(a.title || '',b.title || '') || collator.compare(a.label || '',b.label || '');
     },()=>generation===renderGeneration);
     if(!visible || generation!==renderGeneration) return;
-    const entries=[],outOfStock=[],hiddenRows=new Map();
+    const entries=[],unrecognised=[],outOfStock=[],hiddenRows=new Map();
     for(const row of visible) {
       if(hiddenUntil(row.url)) {
         if(!hiddenRows.has(row.url)||(hiddenRows.get(row.url).outOfStock&&!row.outOfStock)) hiddenRows.set(row.url,row);
-      } else (row.outOfStock ? outOfStock : entries).push(row);
+      } else if (EbayVariants.ambiguousFilamentTypes(row).length) unrecognised.push(row);
+      else (row.outOfStock ? outOfStock : entries).push(row);
       if(performance.now()-sliceStart>4) {await EbaySearchView.yieldTurn();if(generation!==renderGeneration)return;sliceStart=performance.now();}
     }
     const hiddenEntries=[...hiddenRows.values()],showResults=running||results.length>0||hiddenEntries.length>0;
     updateCompactWidth();resultsSection.hidden=!showResults;
+    resultsSection.querySelector('summary').textContent=`Results (${entries.length})`;
+    const unrecognisedSection=root.querySelector('.finder-unrecognised');
+    unrecognisedSection.hidden=!unrecognised.length;
+    unrecognisedSection.querySelector('summary').textContent=`Not recognised types (${new Set(unrecognised.map(row=>row.url)).size} listings)`;
     const hiddenSection=root.querySelector('.finder-hidden'),stockSection=root.querySelector('.finder-out-of-stock');
     hiddenSection.hidden=!hiddenEntries.length;hiddenSection.querySelector('summary').textContent=`Hidden (${hiddenEntries.length} listings)`;
     stockSection.hidden=!outOfStock.length;stockSection.querySelector('summary').textContent=`Out of stock variants (${outOfStock.length})`;
     const context={averages,sortKey};
     virtualView.set(resultsSection.querySelector('.finder-entries'),entries,context,!entries.length&&showResults ? EbayCards.emptyState({scanning:running,outOfStock:outOfStock.length>0}) : null);
+    virtualView.set(unrecognisedSection.querySelector('.finder-entries'),unrecognised,context);
     virtualView.set(hiddenSection.querySelector('.finder-entries'),hiddenEntries,context);
     virtualView.set(stockSection.querySelector('.finder-entries'),outOfStock,context);
     syncSort(sortKey,ascending);
@@ -285,16 +319,16 @@
   }
   let restored = false;
   function persist() {
-    if (restored&&!disposed&&EbayRuntime.active()) EbayDock.save({query:appliedQuery,listingQuery:appliedListingQuery,combine:appliedCombine,appliedQuery,appliedListingQuery,appliedCombine,checked,total,running,stopped,
+    if (restored&&!disposed&&EbayRuntime.active()) EbayDock.save({query:appliedQuery,listingQuery:appliedListingQuery,listingFilterVisible:!listingFilter.hidden,appliedQuery,appliedListingQuery,checked,total,running,stopped,
       discoveryVersion:2,allCacheView:showAllCache,pageListingUrls:[...pageListings],resultsOpen:root.querySelector('.results').open});
   }
   const stateReady = Promise.all([EbayDock.ready,hiddenReady,cachePreferencesReady]).then(async ([saved]) => {
     input.value = saved.query || '';
     listingInput.value = saved.listingQuery || '';
+    syncVariantClear(); syncListingClear();
     appliedQuery = saved.appliedQuery ?? input.value;
     appliedListingQuery = saved.appliedListingQuery ?? listingInput.value;
-    appliedCombine = saved.appliedCombine || saved.combine || 'and';
-    for (const button of combineButtons) button.checked = button.value === (saved.combine === 'or' ? 'or' : 'and');
+    showListingFilter(saved.listingFilterVisible === true || Boolean(listingInput.value || appliedListingQuery));
     const trustedScan = saved.discoveryVersion === 2;
     results = trustedScan ? saved.results || [] : []; failures = trustedScan ? saved.failures || [] : [];
     checked = trustedScan ? saved.checked || 0 : 0; total = trustedScan ? saved.total || 0 : 0;
@@ -330,6 +364,11 @@
       if(change.newValue) rememberedMissing.add(url);
       else if(rememberedMissing.delete(url) && !results.some(row=>row.url===url) && !queue.some(listing=>listing.url===url)) seen.delete(url);
     }
+    if(changes['finder:automaticScan']) {
+      automaticScan=changes['finder:automaticScan'].newValue!==false;
+      if(automaticScan) scheduleDiscovery();
+    }
+    if(changes['finder:cache:maxAge']) scheduleDiscovery();
     if(changes['finder:cache:showAll']) {
       showAllCache=changes['finder:cache:showAll'].newValue===true;
       cacheRevision++;scopeRefreshPending=true;
@@ -517,7 +556,7 @@
   }
   function enqueue(candidates) {
     for (const listing of candidates) {
-      if (seen.has(listing.url)||rememberedMissing.has(listing.url)) continue;
+      if (seen.has(listing.url)||rememberedMissing.has(listing.url)||rememberedIrrelevant.has(listing.url)) continue;
       seen.add(listing.url);
       queue.push(listing);
       if(running) {registerScanCandidate(listing);updateScanProgress();}
@@ -525,11 +564,15 @@
     }
   }
 
-  async function start() {
-    if (running || listingActions.size) return;
+  async function start({automatic=false}={}) {
+    if (running || startBusy || listingActions.size) return;
+    startBusy=true;
+    try {
+    automaticSession=automatic;
     cacheRevision++;
     scan.disabled = true;
     await stateReady;
+    if(automatic && (!automaticScan || userPaused || !EbaySearchHasFilament())) return;
     if(results.length) {
       const urls=[...new Set(results.map(row=>row.url))];
       const response=await EbayRuntime.sendMessage({type:'finder-cache-read',urls});
@@ -557,6 +600,7 @@
       return;
     }
     processQueue();
+    } finally {startBusy=false;if(!running) scan.disabled=false;}
   }
 
   async function processQueue(onlyURL) {
@@ -604,6 +648,7 @@
       if(response?.removed) {
         finishScanCandidate(listing);
         if(response.missing) rememberedMissing.add(listing.url);
+        if(response.irrelevant) rememberedIrrelevant.add(listing.url);
         checked++;
         results=results.filter(row=>row.url!==listing.url);
         failures=failures.filter(row=>row.url!==listing.url);
@@ -716,16 +761,30 @@
     const previousTotal = total;
     try {
       const candidates=await listings();
-      await loadCached(candidates);
-      if(scanStarted && !listingActions.size) enqueue(candidates);
+      if (automaticScan && !userPaused && EbaySearchHasFilament() && !running && !startBusy && !listingActions.size) {
+        // Recheck cached rows too: a previously loaded listing may have expired.
+        const cached=await readCacheBatches(candidates.map(item=>item.url),false);
+        const valid=new Set(cached.items.filter(item=>item.rows?.length).map(item=>item.url));
+        const expired=new Set(results.filter(row=>candidates.some(item=>item.url===row.url)&&!valid.has(row.url)).map(row=>row.url));
+        for(const url of expired) {seen.delete(url);checked=Math.max(0,checked-1);total=Math.max(checked,total-1);}
+        results=results.filter(row=>!expired.has(row.url));
+        await loadCached(candidates);
+        if(candidates.some(item=>!seen.has(item.url)&&!rememberedMissing.has(item.url)&&!rememberedIrrelevant.has(item.url))) {
+          await start({automatic:true});
+          return;
+        }
+      } else await loadCached(candidates);
+      if(scanStarted && !listingActions.size && (!automaticSession || (automaticScan && EbaySearchHasFilament()))) enqueue(candidates);
     }
     catch { return; }
     // A failed listing ends that scan attempt, not automatic discovery. New
     // candidates resume it; only an explicit Stop keeps processing paused.
-    if (!scanStarted || listingActions.size) return;
+    if (!scanStarted || listingActions.size || (automaticSession && (!automaticScan || !EbaySearchHasFilament()))) return;
     if (!userPaused && total > previousTotal) stopped = false;
     if (!stopped && !userPaused) processQueue();
   }
+  stateReady.then(()=>{if(automaticScan) scheduleDiscovery();}).catch(EbayRuntime.report);
+  const automaticScanTimer=setInterval(()=>{if(automaticScan&&!userPaused) scheduleDiscovery();},60000);
   function scheduleDiscovery() {
     if(disposed||!EbayRuntime.active()) return;
     clearTimeout(discoveryTimer);
@@ -784,9 +843,11 @@
     if (scanMode !== 'background' && (running || visibleJob)) EbayRuntime.sendMessage({type:'visible-scan-cancel'}).catch(() => {});
   });
   function applyFilters() {
+    const variantValid=validateVariant();
+    const listingValid=listingFilter.hidden || validateListing();
+    if (!variantValid || !listingValid) return;
     appliedQuery = input.value;
-    appliedListingQuery = listingInput.value;
-    appliedCombine = combineMode();
+    appliedListingQuery = listingFilter.hidden ? '' : listingInput.value;
     persist();
     render();
   }
@@ -806,7 +867,7 @@
   });
   EbayRuntime.onDispose(()=>{
     disposed=true;stopped=true;renderGeneration++;
-    clearInterval(navigationTimer);clearTimeout(discoveryTimer);clearTimeout(cacheSyncTimer);clearTimeout(hiddenTimer);
+    clearInterval(navigationTimer);clearInterval(automaticScanTimer);clearTimeout(discoveryTimer);clearTimeout(cacheSyncTimer);clearTimeout(hiddenTimer);
     observer.disconnect();virtualView.dispose();
     scanBanner.remove();scan.disabled=true;stop.disabled=true;
     status.textContent='Extension updated. Reload this eBay page to reconnect.';

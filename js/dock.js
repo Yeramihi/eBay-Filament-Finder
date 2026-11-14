@@ -4,6 +4,7 @@ globalThis.EbayDock = (() => {
   const item = location.pathname.match(/\/itm\/(?:[^/]+\/)?(\d+)/)?.[1];
   const stateKey = `finder-page:${item ? location.origin+'/itm/'+item : location.href}`;
   let state = {}, host, root, collapsed = false, side = 'right', widthPercent = 25, widthTouched = false;
+  const toggleListeners=new Set();
   let compact = false, autoCollapsed, collapseTouched = false, resizeEbay = false, resizeTouched = false;
   const rowsKey = `${stateKey}:rows`, failuresKey = `${stateKey}:failures`;
   let timer, dirty = {}, pending = Promise.resolve();
@@ -84,7 +85,7 @@ globalThis.EbayDock = (() => {
     button.setAttribute('aria-label',`${collapsed ? 'Open' : 'Collapse'} eBay Filament finder`);
     button.textContent = `${collapsed ? 'Open' : 'Close'} · Filament finder ${side === 'right' ? (collapsed ? '‹' : '›') : (collapsed ? '›' : '‹')}`;
   }
-  function toggle() { collapseTouched = true; collapsed = !collapsed; EbayRuntime.local.set({[`finder:${mode}:collapsed`]:collapsed}).catch(EbayRuntime.report); update(); }
+  function toggle() { collapseTouched = true; collapsed = !collapsed; EbayRuntime.local.set({[`finder:${mode}:collapsed`]:collapsed}).catch(EbayRuntime.report); update(); for(const listener of toggleListeners) listener(collapsed); }
   function mount(element) {
     if (!host) {
       // Reserve a permanent rail gutter, or the full dock in Resize eBay mode.
@@ -170,7 +171,7 @@ globalThis.EbayDock = (() => {
     }
     root.querySelector('.content').replaceChildren(element); update();
   }
-  return {ready,save,mount,
+  return {ready,save,mount,onToggle(listener){toggleListeners.add(listener);return ()=>toggleListeners.delete(listener);},
     isCollapsed: () => collapsed,
     setAutoCollapsed(value) {
       const initial = autoCollapsed === undefined;

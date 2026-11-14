@@ -99,6 +99,10 @@
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id) return;
     if (message?.type === 'get-search-listings') respond({ listings: listings() });
+    if(message?.type==='parse-listing-relevance' && typeof message.html==='string') {
+      const doc=new DOMParser().parseFromString(message.html,'text/html');
+      respond(EbayVariants.listingFilamentInfo(doc));
+    }
     if (message?.type === 'parse-listing-coupon' && typeof message.html === 'string') {
       // Inert document: listing scripts are never executed or inserted into the page.
       const doc = new DOMParser().parseFromString(message.html,'text/html');

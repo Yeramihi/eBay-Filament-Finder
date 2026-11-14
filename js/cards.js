@@ -33,7 +33,7 @@ globalThis.EbayCards = (() => {
     .listing-content{display:block;color:inherit!important;text-decoration:none!important}
     .listing-content:focus-visible{outline:3px solid #2563eb}
     .listing-cache-actions{display:flex;flex-wrap:wrap;align-items:center;gap:5px;clear:both;margin-top:6px}
-    .finder-hidden{padding:8px 9px}.finder-hidden summary{cursor:pointer;font-weight:600}
+    .finder-hidden,.finder-unrecognised{padding:8px 9px}.finder-hidden summary,.finder-unrecognised summary{cursor:pointer;font-weight:600}
     .hidden-help{font:11px/1.4 system-ui;color:#64748b;margin:6px 0}
     .hidden-until{display:block;font:11px/1.4 system-ui;color:#64748b;white-space:normal}
     .hide-duration{font:11px/1.4 system-ui;max-width:85px;padding:2px;border:1px solid #aab7c7;border-radius:4px;background:#fff;color:#17365d}
@@ -90,6 +90,10 @@ globalThis.EbayCards = (() => {
   }
   let tooltipId = 0;
   let activeTooltip;
+  function searchHelp(button) {
+    button.dataset.tooltipToggle='true';
+    bindTooltip(button,'Supports AND / OR / NOT logic, brackets, double quotation marks for phrases, and % wildcard searches.');
+  }
   function tooltip(target,content) {
     const icon=document.createElement('span');
     icon.className='finder-info';icon.textContent='i';icon.dataset.tooltipToggle='true';
@@ -293,7 +297,7 @@ globalThis.EbayCards = (() => {
     root.querySelector('.finder-results').append(unavailable);
 
     function showDisplay(value) {
-      for (const list of [entries, unavailableEntries,...root.querySelectorAll('.finder-hidden .finder-entries')]) {
+      for (const list of [entries, unavailableEntries,...root.querySelectorAll('.finder-hidden .finder-entries, .finder-unrecognised .finder-entries')]) {
         list.classList.toggle('lines', value === 'lines');
         list.classList.toggle('photos-only',value==='photos');
       }
@@ -369,6 +373,8 @@ globalThis.EbayCards = (() => {
     function field(label,value,tooltip,estimate=false){if(!value)return;const span=document.createElement('span');span.className='field'+(estimate?' estimate':'');span.dataset.sortField=({'Listing':'title','Variant':'label','Individual purchase':'total','Bulk purchase*':'spool'})[label]||'';if(row.singleItem&&label==='Listing')span.dataset.sortAlias='label';span.textContent=`${label}: ${value}`;fields.push(span.textContent+(tooltip&&tooltip!==span.textContent?`\n${tooltip}`:''));if(tooltip)EbayCards.tooltip(span,tooltip);item.append(span);}
     if(search||row.singleItem)field('Listing',row.title||row.label);
     if(!row.singleItem)field('Variant',row.label);
+    const ambiguousTypes=EbayVariants.ambiguousFilamentTypes?.(row) || [];
+    if(ambiguousTypes.length)field('Material','Not recognised types',`No variant choices are available. The title names ${ambiguousTypes.join(', ')}, so the actual filament type cannot be identified reliably.`);
     field('Individual purchase',EbayVariants.displayTotal(row,format),EbayVariants.priceTooltip(row));
     const coupon=EbayVariants.totalEstimate(row).coupon;if(coupon)field(coupon.source==='subtitle' ? 'Advertised coupon' : 'Coupon',`−${EbayVariants.couponLabel(coupon)}`,EbayVariants.priceTooltip(row));
     field('Bulk purchase*',EbayVariants.displaySpool(row,format),EbayVariants.spoolTooltip(row,EbayVariants.spoolEstimate(row)),true);
@@ -458,5 +464,5 @@ globalThis.EbayCards = (() => {
     root.querySelector('.finder-toggle').setAttribute('aria-expanded', String(expanded));
   }
 
-  return {closeTooltip:()=>{activeTooltip?.();closePhotoPanel();},emptyState, controls, entry, updateHidden, showEntries, setFiltersExpanded, tooltip, updateAverage};
+  return {closeTooltip:()=>{activeTooltip?.();closePhotoPanel();},emptyState, controls, entry, updateHidden, showEntries, setFiltersExpanded, tooltip, searchHelp, updateAverage};
 })();

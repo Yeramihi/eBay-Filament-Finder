@@ -3,13 +3,15 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync(`${__dirname}/../js/search.js`, 'utf8');
+const materialContext={};
+vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/variants.js`, 'utf8'),materialContext);
 const tick = () => new Promise(resolve => setTimeout(resolve, 15));
 function element() {
   return {hidden:false, open:true, value:'', disabled:false, textContent:'', style:{setProperty(){}},
-    classList:{toggle(){},add(){},contains(){return false;}}, querySelector(){return element();},querySelectorAll(){return [];},remove(){},handlers:{}, setAttribute(){}, append(){}, replaceChildren(){},
+    classList:{toggle(){},add(){},contains(){return false;}}, querySelector(){return element();},querySelectorAll(){return [];},remove(){},handlers:{}, setAttribute(){}, focus(){this.focused=true;}, append(){}, replaceChildren(){},
     addEventListener(type, fn){this.handlers[type]=fn;}, closest(){return null;}};
 }
-function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,parallel=1,mode,realRuntime=false,allCache=false,invalidateCache=false}={}) {
+function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,parallel=1,mode,realRuntime=false,allCache=false,invalidateCache=false,saved={},automaticScan=false,initialCandidates=[],initialFilament=false}={}) {
   const nodes = new Map();
   const windowHandlers = {}, runtimeHandlers = [], pageChildren = [], requestMessages = [];
   const get = selector => {if (!nodes.has(selector)) nodes.set(selector, element()); return nodes.get(selector);};
@@ -17,8 +19,9 @@ function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,pa
   const radio = {value:'and', checked:true};
   const root = {querySelector:get, querySelectorAll:()=>[radio]};
   const buttons = [], calls = [], pending = [], collapsed = [], snapshots = [], controlMessages = [], polls = [];
-  let candidates = [], hasFilament = false, observer;
+  let candidates = initialCandidates, hasFilament = initialFilament, observer;
   let pagination = {page:1,previous:null,next:null};
+  const rendered=[];
   const cache=new Map();let activeURL;
   const context = {
     console, URL, Intl, Map, Set, WeakMap, performance, setTimeout:(fn,ms)=>setTimeout(fn,fastRetries && ms===3000?0:ms), clearTimeout, setInterval(){},clearInterval(){},
@@ -36,7 +39,7 @@ function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,pa
       controlMessages.push(message);
       if(message.type==='visible-scan-poll')return new Promise(resolve=>polls.push(response=>{if(response.rows)cache.set(activeURL,response.rows);resolve(response);}));
       return Promise.resolve({cancelled:true});}},
-      storage:{onChanged:{addListener(){}},local:{get:async()=>({parallelListings:parallel,'finder:visibleScan':visibleMode,'finder:scanMode':mode===undefined ? (visibleMode?'visible':'background') : mode,'finder:cache:showAll':allCache})}}},
+      storage:{onChanged:{addListener(){}},local:{get:async()=>({parallelListings:parallel,'finder:visibleScan':visibleMode,'finder:scanMode':mode===undefined ? (visibleMode?'visible':'background') : mode,'finder:cache:showAll':allCache,'finder:automaticScan':automaticScan})}}},
 
     EbaySearchPagination:()=>pagination,
     EbaySearchListings:()=>candidates,
@@ -44,18 +47,18 @@ function harness({fastRetries=false,query='yellow PLA silk',visibleMode=false,pa
     EbaySearchHasFilament:()=>hasFilament,
     EbaySearchQuery:()=>query,
     EbaySettings:{defaultParallel:1},
-    EbayDock:{ready:Promise.resolve({}), setCompact(){},mount(){},setAutoCollapsed:x=>collapsed.push(x),
+    EbayDock:{ready:Promise.resolve(saved), setCompact(){},mount(){},setAutoCollapsed:x=>collapsed.push(x),
       isCollapsed:()=>collapsed.at(-1)===true,
       save:x=>snapshots.push(x),saveSort(){},onSortChange(){},getSort:async()=>null},
     EbayCards:{controls:()=>()=>{},tooltip(){},setFiltersExpanded:(r,v)=>{get('.finder-toolbar').hidden=!v;},
       showEntries(){},emptyState:()=>({}),entry:()=>({}),updateAverage(){}},
-    EbaySearchView:{yieldTurn:()=>Promise.resolve(),sort:async(rows,compare,current)=>current()?rows.sort(compare):null,create:()=>({set(){},dispose(){}})},
-    EbayVariants:{spoolEstimate:()=>({}),comparePrice:()=>0, terms:()=>[], matchingAverage:()=>null, matches:()=>true}
+    EbaySearchView:{yieldTurn:()=>Promise.resolve(),sort:async(rows,compare,current)=>current()?rows.sort(compare):null,create:()=>({set(container,rows){rendered.push(rows);},dispose(){}})},
+    EbayVariants:{ambiguousFilamentTypes:materialContext.EbayVariants.ambiguousFilamentTypes,attachQueryValidation:materialContext.EbayVariants.attachQueryValidation,spoolEstimate:()=>({}),comparePrice:()=>0, terms:q=>q.toLowerCase().split(/\s+/).filter(Boolean), matchingAverage:()=>null, matches:(text,words)=>words.every(word=>text.toLowerCase().includes(word))}
   };
   if(realRuntime) vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/runtime.js`,'utf8'),context);
   else context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   vm.runInNewContext(source,context);
-  return {get, buttons,calls,pending,collapsed,snapshots,controlMessages,polls,windowHandlers,runtimeHandlers,pageChildren,requestMessages,
+  return {get, cache,rendered,buttons,calls,pending,collapsed,snapshots,controlMessages,polls,windowHandlers,runtimeHandlers,pageChildren,requestMessages,
     setCandidates: x=>candidates=x,
     setPagination:x=>pagination=x,
     async ownMutation(){observer([{type:'attributes',target:{nodeType:1,closest:()=>({})}}]);await new Promise(r=>setTimeout(r,280));},
@@ -125,6 +128,7 @@ test('dock keeps open across results and can open again when new filament appear
   context.EbayRuntime=require('./runtime-stub.cjs').forChrome(context.chrome);
   vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/dock.js`,'utf8'),context);
   const dock=context.EbayDock;
+  const toggles=[];dock.onToggle(value=>toggles.push(value));
   dock.setAutoCollapsed(false);dock.mount(element());
   restore({'finder:results:collapsed':true});await tick();
   assert.equal(get('.content').hidden,false);
@@ -132,6 +136,10 @@ test('dock keeps open across results and can open again when new filament appear
   dock.setAutoCollapsed(true);assert.equal(get('.content').hidden,true);
   dock.setAutoCollapsed(false);assert.equal(get('.content').hidden,false);
   dock.setAutoCollapsed(true);assert.equal(get('.content').hidden,false);
+  assert.deepEqual(toggles,[true]);
+  get('.rail').handlers.click();
+  get('.rail').handlers.click();
+  assert.deepEqual(toggles,[true,true,false]);
 });
 test('pagination before the first user Scan never requests listings',async()=>{
   const h=harness();await tick();
@@ -283,4 +291,101 @@ test('a context invalidated during real cache-index loading cancels the search a
   assert.equal(h.calls.length,0);
   await h.discover();
   assert.equal(h.calls.length,0);
+});
+
+test('listing title search starts hidden, can be added, and removal clears its applied filter',async()=>{
+  const h=harness();await tick();
+  assert.equal(h.get('#listing-filter').hidden,true);
+  assert.equal(h.get('.add-listing-filter').hidden,false);
+  h.get('.add-listing-filter').handlers.click();
+  assert.equal(h.get('#listing-filter').hidden,false);
+  assert.equal(h.get('#listing-query').focused,true);
+  h.get('#listing-query').value='brand';
+  h.get('.apply-filters').handlers.click();await tick();
+  assert.equal(h.snapshots.at(-1).appliedListingQuery,'brand');
+  h.get('.remove-listing-filter').handlers.click();await tick();
+  assert.equal(h.get('#listing-filter').hidden,true);
+  assert.equal(h.get('#listing-query').value,'');
+  assert.equal(h.snapshots.at(-1).appliedListingQuery,'');
+  assert.equal(h.snapshots.at(-1).listingFilterVisible,false);
+});
+
+test('restored title filters stay visible and old OR preferences now require both matches',async()=>{
+  const rows=[
+    {url:listing(1).url,title:'Brand filament',label:'yellow PLA',inStock:true},
+    {url:listing(2).url,title:'Other filament',label:'yellow PLA',inStock:true},
+    {url:listing(3).url,title:'Brand filament',label:'blue PLA',inStock:true}
+  ];
+  const h=harness({saved:{discoveryVersion:2,query:'yellow',listingQuery:'brand',combine:'or',appliedCombine:'or',results:rows}});
+  await tick();await tick();
+  assert.equal(h.get('#listing-filter').hidden,false);
+  assert.equal(h.get('#listing-query').value,'brand');
+  assert.deepEqual(h.rendered.flat().map(row=>row.url).filter(Boolean),[listing(1).url]);
+});
+
+test('single-item multi-material listings move below Results, while real variants stay in Results',async()=>{
+  const rows=[
+    {url:listing(1).url,title:'2 X YOYI PLA Classic PLA+ PETG SILK ASA TPU White',label:'Mixed title',singleItem:true,inStock:true},
+    {url:listing(2).url,title:'PLA PETG filament',label:'PLA white',singleItem:false,inStock:true},
+    {url:listing(3).url,title:'PLA silk PLA+ white',label:'PLA white',singleItem:true,inStock:true},
+    {url:listing(4).url,title:'PLA PETG',label:'PLA PETG',singleItem:true,outOfStock:true}
+  ];
+  const h=harness({saved:{discoveryVersion:2,results:rows}});await tick();await tick();
+  const batches=h.rendered.slice(-4);
+  assert.deepEqual(Array.from(batches[0],row=>row.url).sort(),[listing(2).url,listing(3).url]);
+  assert.deepEqual(Array.from(batches[1],row=>row.url).sort(),[listing(1).url,listing(4).url]);
+  assert.equal(h.get('.finder-unrecognised').hidden,false);
+  assert.equal(batches[3].length,0);
+  assert.ok(source.indexOf('class="finder-unrecognised"')>source.indexOf('class="results"'));
+  assert.ok(source.indexOf('class="finder-unrecognised"')<source.indexOf('class="finder-hidden"'));
+});
+
+test('invalid filters show an error only on submit and preserve both last valid filters',async()=>{
+  const h=harness();await tick();
+  assert.equal(h.get('#variant-query-error').hidden,true);
+  h.get('#variant-query').value='PLA';
+  h.get('.apply-filters').handlers.click();await tick();
+  const count=h.snapshots.length;
+  h.get('#variant-query').value='(white ASA) OR (black PETG';
+  h.get('#variant-query').handlers.keydown({key:'Enter',preventDefault(){}});
+  await tick();
+  assert.match(h.get('#variant-query-error').textContent,/Missing closing bracket/);
+  assert.equal(h.get('#variant-query-error').hidden,false);
+  assert.equal(h.snapshots.length,count);
+  h.get('#variant-query').handlers.input();
+  assert.equal(h.get('#variant-query-error').hidden,true);
+  h.get('#variant-query').value='PETG';
+  h.get('.add-listing-filter').handlers.click();
+  const before=h.snapshots.length;
+  h.get('#listing-query').value='brand OR';
+  h.get('.apply-filters').handlers.click();await tick();
+  assert.equal(h.get('#listing-query-error').hidden,false);
+  assert.equal(h.snapshots.length,before);
+  h.get('#listing-query').value='brand';
+  h.get('.apply-filters').handlers.click();await tick();
+  assert.equal(h.get('#listing-query-error').hidden,true);
+  assert.equal(h.snapshots.at(-1).appliedQuery,'PETG');
+  assert.equal(h.snapshots.at(-1).appliedListingQuery,'brand');
+});
+
+test('automatic scan starts on initial filament results and respects Stop',async()=>{
+  const h=harness({automaticScan:true,initialCandidates:[listing(1)],initialFilament:true});
+  await new Promise(resolve=>setTimeout(resolve,320));
+  assert.equal(h.calls.length,1);
+  h.buttons[1].handlers.click();await h.complete();
+  h.setCandidates([listing(1),listing(2)]);await h.discover(true);
+  assert.equal(h.calls.length,1);
+});
+test('automatic scan is gated by filament detection and reuses fresh cache',async()=>{
+  const h=harness({automaticScan:true,initialCandidates:[listing(1)]});
+  await new Promise(resolve=>setTimeout(resolve,320));
+  assert.equal(h.calls.length,0);
+  h.cache.set(listing(1).url,[{label:'PLA',inStock:true}]);
+  await h.discover(true);
+  assert.equal(h.calls.length,0);
+  h.setCandidates([listing(1),listing(2)]);await h.discover(true);
+  assert.deepEqual(h.calls,[listing(2).url]);await h.complete();
+  // Cache reads omit entries outside retention, just as a cache miss does.
+  h.cache.delete(listing(1).url);await h.discover(true);
+  assert.deepEqual(h.calls,[listing(2).url,listing(1).url]);await h.complete();
 });

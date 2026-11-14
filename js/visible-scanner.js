@@ -146,6 +146,12 @@ globalThis.EbayVisibleScanner = (() => {
         return finish(job,{cancelled:true,error:'The search page stopped responding. Scan paused; this tab was left open.'});
       }
       if (message.type==='visible-scan-report') {
+        if(message.status==='irrelevant') {
+          const tab=await chrome.tabs.get(job.tabId);
+          if(!sameItem(sender.url,job.url)||!unchanged(tab,job)) return {paused:true,error:'Scan tab no longer shows the expected listing.'};
+          await EbayListingCache.remove(job.url);
+          return finish(job,{removed:true,irrelevant:true},true);
+        }
         if(message.status==='missing') {
           const tab=await chrome.tabs.get(job.tabId);
           if(!sameItem(sender.url,job.url)||!unchanged(tab,job)) return {paused:true,error:'Scan tab no longer shows the expected listing.'};
@@ -161,7 +167,7 @@ globalThis.EbayVisibleScanner = (() => {
             job.status='paused';job.detail='Listing data could not be verified. Retry, Skip or Stop.';await write(job);
             return {status:job.status,detail:job.detail};
           }
-          return finish(job,await EbayListingCache.put(job.url,rows),true);
+          return finish(job,await EbayListingCache.put(job.url,rows.map(row=>({...row,filamentVerified:true}))),true);
         }
         job.status=message.status==='paused'?'paused':'loading';
         job.detail=String(message.detail || 'Waiting for listing data…').slice(0,600);

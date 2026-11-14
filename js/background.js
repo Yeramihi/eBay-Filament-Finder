@@ -1,6 +1,21 @@
 importScripts('variants.js', 'listing-cache.js', 'visible-scanner.js');
 
 
+async function listingIsFilament(html, sourceTab) {
+  let info=EbayVariants.listingFilamentInfo(html);
+  if(Number.isInteger(sourceTab)) {
+    try {const parsed=await chrome.tabs.sendMessage(sourceTab,{type:'parse-listing-relevance',html});if(parsed && typeof parsed.relevant==='boolean')info=parsed;} catch {}
+  }
+  if(info.relevant) return true;
+  if(!info.descriptionUrl) return false;
+  const url=new URL(info.descriptionUrl,'https://www.ebay.com');
+  if(url.protocol!=='https:' || !/(?:^|\.)ebaydesc\.com$/.test(url.hostname)) return false;
+  const response=await fetch(url.href,{credentials:'omit',signal:AbortSignal.timeout(10000)});
+  if(!response.ok) throw new Error('Could not verify the listing description.');
+  const description=(await response.text()).replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,' ').replace(/<[^>]*>/g,' ');
+  return EbayVariants.hasFilamentText(description);
+}
+
 let hiddenChanges=Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (['finder-page-session-get','finder-page-session-set'].includes(message?.type) && sender.id === chrome.runtime.id) {
@@ -18,6 +33,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if(message.type==='finder-page-session-get') return {data:await chrome.storage.session.get(keys)};
       await chrome.storage.session.set(message.patch);return {saved:true};
     })().then(respond,error=>respond({error:error.message}));
+    return true;
+  }
+  if (message?.type === 'finder-listing-relevance' && sender.id === chrome.runtime.id) {
+    (async()=>{
+      EbayListingCache.canonical(sender.url);
+      return {relevant:await listingIsFilament(String(message.html || ''),sender.tab?.id)};
+    })().then(respond,error=>respond({relevant:false,error:error.message}));
     return true;
   }
   if (message?.type === 'finder-missing-clear' && sender.id === chrome.runtime.id) {
@@ -80,9 +102,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (!Array.isArray(message.rows) || !message.rows.length || message.rows.some(row=>!row || typeof row.label!=='string')) {
         throw new Error('No readable listing data is available yet.');
       }
+      if(message.filamentVerified!==true && message.manuallyIncluded!==true) return {saved:false,irrelevant:true};
       // An explicitly opened listing is fresh even if eBay omits stock for a
       // variant. Preserve that unknown status rather than retaining old data.
-      const result=await EbayListingCache.refreshFromPage(url,message.rows,message.baseline,Number.isFinite(message.pageOpenedAt) ? message.pageOpenedAt : Date.now());
+      const result=await EbayListingCache.refreshFromPage(url,message.rows.map(row=>({...row,filamentVerified:message.filamentVerified===true,manuallyIncluded:message.manuallyIncluded===true})),message.baseline,Number.isFinite(message.pageOpenedAt) ? message.pageOpenedAt : Date.now());
       return result.persisted ? {saved:true,fetchedAt:result.fetchedAt,priceChanges:result.priceChanges,superseded:result.superseded===true} : {saved:false,error:result.cacheError,priceChanges:result.priceChanges};
     })().then(respond,error=>respond({saved:false,error:error.message}));
     return true;
@@ -120,7 +143,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     const key = url.origin + url.pathname;
     if(await EbayListingCache.isMissing(key)) return {removed:true,missing:true};
     const cached = message.forceRefresh === true ? null : await EbayListingCache.get(key);
-    if (cached) return cached;
+    if (cached && cached.rows?.every(row=>row.filamentVerified===true || row.manuallyIncluded===true || EbayVariants.hasFilamentText(row.title))) return cached;
     if (message.visible === true) return EbayVisibleScanner.start(key,sender,message.progress,message.returnToSource === true);
     const response = await fetch(key, { credentials: 'include', signal: AbortSignal.timeout(20000) });
     const html = await response.text();
@@ -130,6 +153,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         !html.includes('"variationCombinations"')) {
       throw new Error('eBay verification page; scan stopped.');
     }
+    if(!await listingIsFilament(html,sourceTab)) {await EbayListingCache.remove(key);return {removed:true,irrelevant:true};}
     // Parse embedded JSON only. Never execute listing scripts.
     const variants = EbayVariants.getRows([html]);
     const rows = variants.length ? variants : EbayVariants.getSingleItemRows(html, key);
@@ -142,7 +166,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     } catch {
       coupon = EbayVariants.getCoupon(html);
     }
-    const result = { rows: EbayVariants.withPostage(EbayVariants.withBannerOffers(EbayVariants.withVolumePricing(rows,[html]),[html]), EbayVariants.getPostage(html)).map(row => ({...row,coupon,title:typeof message.title==='string' ? message.title : row.title,image:row.image || message.image})) };
+    const result = { rows: EbayVariants.withPostage(EbayVariants.withBannerOffers(EbayVariants.withVolumePricing(rows,[html]),[html]), EbayVariants.getPostage(html)).map(row => ({...row,filamentVerified:true,coupon,title:typeof message.title==='string' ? message.title : row.title,image:row.image || message.image})) };
     return EbayListingCache.put(key,result.rows);
   })().then(result => respond(result), error => respond({ error: error.message }));
   return true;

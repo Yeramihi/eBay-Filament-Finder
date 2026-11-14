@@ -12,6 +12,7 @@ globalThis.EbaySettings = (() => {
     'finder:scanMode': 'mixed',
     'finder:cache:maxAge': 'month',
     'finder:cache:showAll': false,
+    'finder:automaticScan': true,
     'finder:results:sort': {key:'total', ascending:true},
     'finder:listing:sort': {key:'total', ascending:true}
   };
@@ -72,6 +73,7 @@ globalThis.EbaySettings = (() => {
     const scanMode = root.getElementById('scan-mode');
     const cacheAge = root.getElementById('cache-age');
     const allCached=root.getElementById('all-cached');
+    const automaticScan=root.getElementById('automatic-scan');
     const storageSize=root.getElementById('storage-size');
     const purgeCache=root.getElementById('purge-cache');
     const clearMissing=root.getElementById('clear-missing');
@@ -185,6 +187,7 @@ globalThis.EbaySettings = (() => {
       return pendingSave;
     }
 
+    automaticScan.addEventListener('change',()=>save({'finder:automaticScan':automaticScan.checked}));
     allCached.addEventListener('change',()=>save({'finder:cache:showAll':allCached.checked}));
     cacheAge.addEventListener('change', () => save({'finder:cache:maxAge':cacheAge.value}));
     side.addEventListener('change', () => save({'finder:side': side.value}));
@@ -227,6 +230,7 @@ globalThis.EbaySettings = (() => {
       scanMode.value = defaults['finder:scanMode'];
       cacheAge.value = defaults['finder:cache:maxAge'];
       allCached.checked=defaults['finder:cache:showAll'];
+      automaticScan.checked=true;
       updateScanControls();
       showStatus('Settings reset to defaults.');
     });
@@ -237,6 +241,7 @@ globalThis.EbaySettings = (() => {
 
     const onChange = (changes, area) => {
       if(area==='local') scheduleStorageSize();
+      if(area==='local'&&changes['finder:automaticScan']) automaticScan.checked=changes['finder:automaticScan'].newValue!==false;
       if(area==='local'&&changes['finder:cache:showAll']) allCached.checked=changes['finder:cache:showAll'].newValue===true;
       if (area === 'local' && changes.parallelListings) {
         const count = changes.parallelListings.newValue;
@@ -253,9 +258,10 @@ globalThis.EbaySettings = (() => {
     chrome.storage.onChanged.addListener(onChange);
 
     EbayRuntime.local.get([
-      'finder:side', 'finder:widthPercent', 'finder:width', 'finder:display', 'finder:results:display', 'finder:listing:display', 'finder:resizeEbay', 'parallelListings', 'finder:visibleScan', 'finder:scanMode', 'finder:cache:maxAge', 'finder:cache:showAll'
+      'finder:side', 'finder:widthPercent', 'finder:width', 'finder:display', 'finder:results:display', 'finder:listing:display', 'finder:resizeEbay', 'parallelListings', 'finder:visibleScan', 'finder:scanMode', 'finder:cache:maxAge', 'finder:cache:showAll', 'finder:automaticScan'
     ]).then(saved => {
       allCached.checked=saved['finder:cache:showAll']===true;
+      automaticScan.checked=saved['finder:automaticScan']!==false;
       cacheAge.value = ['day','week','month','never'].includes(saved['finder:cache:maxAge']) ? saved['finder:cache:maxAge'] : 'month';
       side.value = saved['finder:side'] === 'left' ? 'left' : 'right';
       showWidth(saved['finder:widthPercent'], saved['finder:width']);

@@ -8,7 +8,7 @@ const parent={id:'extension',tab:{id:1,windowId:10},documentId:'search-document'
 function setup(){
   const data={},tabs=new Map([[1,{id:1,active:false,url:parent.url}]]),created=[],closed=[],messages=[],writes=[];
   let id=10;
-  const context={EbayListingCache:{put:async(url,rows)=>({rows}),markMissing:async()=>({removed:true,missing:true})},console,URL,Date,Promise,Number,crypto:{randomUUID:()=>`job-${++id}`},chrome:{runtime:{id:'extension'},storage:{session:{
+  const context={EbayListingCache:{remove:async()=>{},put:async(url,rows)=>({rows}),markMissing:async()=>({removed:true,missing:true})},console,URL,Date,Promise,Number,crypto:{randomUUID:()=>`job-${++id}`},chrome:{runtime:{id:'extension'},storage:{session:{
     get:async key=>({[key]:structuredClone(data[key])}),
     set:async patch=>{writes.push(structuredClone(patch));Object.assign(data,structuredClone(patch));},remove:async key=>{delete data[key];}
   }},tabs:{
@@ -124,4 +124,14 @@ test('successive listing jobs navigate the same owned tab',async()=>{
   await h.send({type:'visible-scan-report',jobId:second.jobId,status:'ready',rows});
   await h.send({type:'visible-scan-finish'},parent);
   assert.deepEqual(h.closed,[owner.tab.id]);
+});
+
+test('irrelevant visible listing is skipped successfully rather than cached or paused',async()=>{
+  const h=setup(),started=await h.api.start(url,parent);
+  const response=await h.send({type:'visible-scan-report',jobId:started.jobId,status:'irrelevant'});
+  assert.equal(response.irrelevant,true);
+  const result=await h.send({type:'visible-scan-poll',jobId:started.jobId},parent);
+  assert.equal(result.irrelevant,true);
+  assert.equal(result.rows,undefined);
+  assert.equal(h.data['finder:visibleScan:active'],undefined);
 });

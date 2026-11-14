@@ -49,6 +49,19 @@
         return;
       }
       if (!expectedItem()) {await pause('eBay opened another page, possibly sign-in. Complete it, then click Retry on the listing.');return;}
+      if(document.readyState==='complete' && globalThis.EbayVariants?.listingFilamentInfo) {
+        const info=EbayVariants.listingFilamentInfo(document);
+        let relevant=info.relevant;
+        if(!relevant) {
+          const checked=await EbayRuntime.sendMessage({type:'finder-listing-relevance',html:document.documentElement.outerHTML});
+          if(checked?.error) {await pause(checked.error);return;}
+          relevant=checked?.relevant===true;
+        }
+        if(!relevant) {
+          await report({status:'irrelevant'});
+          waiting=true;clearInterval(timer);show('No filament in the listing title or description. Skipped.');return;
+        }
+      }
       let rows;
       try {rows=globalThis.EbayListingData?.();} catch {rows=null;}
       const valid=Array.isArray(rows)&&rows.length&&rows.every(row=>row.inStock||row.outOfStock);
