@@ -151,6 +151,7 @@
       <section class="panel finder-layout" aria-label="eBay variant prices">
         <div class="finder-toolbar" id="finder-toolbar">
           <div class="filter">
+            <div class="query-heading"><span>Variant</span><button type="button" class="query-view finder-button">View</button></div>
             <div class="query-input"><input
               type="text"
 

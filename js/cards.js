@@ -23,6 +23,7 @@ globalThis.EbayCards = (() => {
     .finder-entries.lines .finder-image{display:none}
     .finder-entry img{width:52px;height:52px;object-fit:contain;float:left;margin:0 10px 6px 0;border-radius:5px}
     .finder-entry .field{display:block}.finder-entry .field:first-of-type{font-weight:650}.finder-entries:not(.lines) .field.sort-active,.finder-entries.lines .line-part.sort-active{background:#e5f0e9;border-radius:4px;padding:3px 6px;margin:3px 0;font-weight:650}.finder-entry .estimate{font-style:italic}.finder-entry.out-of-stock{color:#64748b!important}
+    .query-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.query-view{padding:2px 7px;font-size:11px}
     .finder-empty{min-width:0;padding:22px 18px 24px;border:1px solid #cbd8e6;border-radius:12px;background:linear-gradient(150deg,#f3f7fc,#fff 75%);text-align:center;color:#17365d;font:13px/1.5 system-ui;white-space:normal;overflow-wrap:anywhere}
     .finder-empty-art{display:block;width:200px;max-width:100%;height:auto;margin:0 auto 10px}.finder-empty-kicker{display:block;font-size:10px;letter-spacing:.1em;font-weight:700;color:#6a7789}.finder-empty h3{margin:8px 0;font-size:18px;line-height:1.3;color:#17365d}.finder-empty p{max-width:360px;margin:9px auto}.finder-empty .finder-empty-hint{font-size:12px;color:#617086;margin-top:14px}
     .finder-info:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
@@ -297,6 +298,12 @@ globalThis.EbayCards = (() => {
     root.querySelector('.finder-results').append(unavailable);
 
     function showDisplay(value) {
+      value=['lines','tiles','photos'].includes(value) ? value : defaultDisplay;
+      currentDisplay=value;
+      const labels={lines:'List',tiles:'Tiles',photos:'Photos'};
+      const next=displayOrder[(displayOrder.indexOf(value)+1)%displayOrder.length];
+      viewButton.setAttribute('aria-label',`View: ${labels[value]}. Switch to ${labels[next]}`);
+      viewButton.setAttribute('title',`View: ${labels[value]}. Switch to ${labels[next]}`);
       for (const list of [entries, unavailableEntries,...root.querySelectorAll('.finder-hidden .finder-entries, .finder-unrecognised .finder-entries')]) {
         list.classList.toggle('lines', value === 'lines');
         list.classList.toggle('photos-only',value==='photos');
@@ -305,7 +312,17 @@ globalThis.EbayCards = (() => {
     const listingPage=globalThis.location?.pathname.startsWith('/itm/');
     const defaultDisplay=listingPage ? 'tiles' : 'photos';
     const displayKey = `finder:${listingPage ? 'listing' : 'results'}:display`;
+    const displayOrder=['lines','tiles','photos'];
+    let currentDisplay=defaultDisplay;
+    const viewButton=root.querySelector('.query-view');
     let displayChanged = false;
+    viewButton.addEventListener('click',()=>{
+      displayChanged=true;
+      const next=displayOrder[(displayOrder.indexOf(currentDisplay)+1)%displayOrder.length];
+      showDisplay(next);
+      EbayRuntime.local.set({[displayKey]:next}).catch(EbayRuntime.report);
+    });
+    showDisplay(currentDisplay);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes[displayKey]) {
         displayChanged = true;

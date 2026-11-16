@@ -2,17 +2,17 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
 function setup(keys,pathname='/sch/i.html',saved={}){
-  let storageChange;
+  let storageChange;const saves=[];
   const created=[],nodes=new Map(),changes=[];
   function element(tag='div') {
     const node={tag,children:[],handlers:{},hidden:false,className:'',textContent:'',classList:{values:{},toggle(key,value){this.values[key]=value;}},setAttribute(name,value){this[name]=value;},append(...children){this.children.push(...children);},before(other){this.beforeNode=other;},after(other){this.afterNode=other;},addEventListener(name,callback){this.handlers[name]=callback;}};
     created.push(node);return node;
   }
   const root={append(){},querySelector:selector=>{if(!nodes.has(selector))nodes.set(selector,element());return nodes.get(selector);},querySelectorAll:()=>[]};
-  const context={location:{pathname},document:{createElement:element},Option:class{constructor(label,value){this.textContent=label;this.value=value;}},chrome:{storage:{onChanged:{addListener(callback){storageChange=callback;}}}},EbayRuntime:{local:{get:async()=>saved},report(){}}};
+  const context={location:{pathname},document:{createElement:element},Option:class{constructor(label,value){this.textContent=label;this.value=value;}},chrome:{storage:{onChanged:{addListener(callback){storageChange=callback;}}}},EbayRuntime:{local:{get:async()=>saved,set:async patch=>{saves.push(patch);}},report(){}}};
   vm.runInNewContext(fs.readFileSync(`${__dirname}/../js/cards.js`,'utf8'),context);
   const sync=context.EbayCards.controls(root,keys,(key,ascending)=>changes.push({key,ascending}));
-  return {created,nodes,changes,sync,storageChange,sort:created.find(node=>node.tag==='select'),row:created.find(node=>node.className==='finder-sort-menu')};
+  return {created,nodes,changes,saves,sync,storageChange,sort:created.find(node=>node.tag==='select'),row:created.find(node=>node.className==='finder-sort-menu')};
 }
 test('sort dropdown is permanently on its own row below the toolbar buttons',()=>{
   const h=setup([['label','Variant'],['total','Individual purchase']]);
@@ -56,4 +56,21 @@ test('fresh search pages default to photos while listing pages default to tiles'
  const search=setup([['total','Price']],'/sch/i.html');const listing=setup([['total','Price']],'/itm/123');await Promise.resolve();
  assert.equal(search.nodes.get('.finder-entries').classList.values['photos-only'],true);
  assert.equal(listing.nodes.get('.finder-entries').classList.values['photos-only'],false);
+});
+
+test('View button cycles list, tiles and photos and saves to the page-specific preference',async()=>{
+  for(const [path,key] of [['/sch/i.html','finder:results:display'],['/itm/123','finder:listing:display']]) {
+    const h=setup([['total','Price']],path,{[key]:'lines'});await Promise.resolve();
+    const button=h.nodes.get('.query-view');
+    const classes=h.nodes.get('.finder-entries').classList.values;
+    for(const expected of ['tiles','photos','lines']) {
+      button.handlers.click();
+      assert.equal(h.saves.at(-1)[key],expected);
+      assert.equal(Object.keys(h.saves.at(-1)).length,1);
+      assert.equal(classes.lines,expected==='lines');
+      assert.equal(classes['photos-only'],expected==='photos');
+    }
+    h.storageChange({[key]:{newValue:'photos'}},'local');
+    button.handlers.click();assert.equal(h.saves.at(-1)[key],'lines');
+  }
 });

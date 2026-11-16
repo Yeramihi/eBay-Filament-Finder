@@ -39,7 +39,7 @@
       </nav>
       <div class="finder-toolbar" id="finder-toolbar" hidden>
         <div class="filters">
-          <label for="variant-query">Variant</label><div class="query-input"><input id="variant-query" autocomplete="off" maxlength="512" aria-describedby="variant-query-error"><button type="button" class="query-help variant-query-help" aria-label="Search input rules">?</button><button type="button" class="clear-query clear-variant-query" aria-label="Clear variant search" hidden><span aria-hidden="true">×</span></button></div><p class="query-error" id="variant-query-error" role="alert" hidden></p>
+          <div class="query-heading"><label for="variant-query">Variant</label><button type="button" class="query-view finder-button">View</button></div><div class="query-input"><input id="variant-query" autocomplete="off" maxlength="512" aria-describedby="variant-query-error"><button type="button" class="query-help variant-query-help" aria-label="Search input rules">?</button><button type="button" class="clear-query clear-variant-query" aria-label="Clear variant search" hidden><span aria-hidden="true">×</span></button></div><p class="query-error" id="variant-query-error" role="alert" hidden></p>
           <button type="button" class="add-listing-filter finder-button" aria-controls="listing-filter" aria-expanded="false">+ Add listing title search</button>
           <div class="listing-filter" id="listing-filter" hidden>
             <div class="listing-filter-heading"><label for="listing-query">Listing title</label><button type="button" class="remove-listing-filter finder-button" aria-label="Remove listing title search">Remove</button></div>
