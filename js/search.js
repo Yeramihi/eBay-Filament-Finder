@@ -51,6 +51,7 @@
         <p class="scan-notice" role="status" hidden></p>
         <details class="results" open><summary>Results (0)</summary><div class="finder-entries"></div></details>
         <details class="finder-unrecognised" hidden><summary>Not recognised types</summary><p class="hidden-help">These listings have no variant choices and name multiple filament types. The actual material cannot be identified reliably.</p><div class="finder-entries"></div></details>
+        <details class="finder-auctions" hidden><summary>Auctions</summary><div class="finder-entries"></div></details>
         <details class="finder-hidden" hidden><summary>Hidden</summary><p class="hidden-help">Whole listings hidden from results, including their out-of-stock variants. Unhide at any time; they return automatically when the selected period ends.</p><div class="finder-entries"></div></details>
         <details class="failures" hidden><summary></summary><ul></ul></details>
       </div>
@@ -265,11 +266,12 @@
       return (ascending ? order : -order) || collator.compare(a.title || '',b.title || '') || collator.compare(a.label || '',b.label || '');
     },()=>generation===renderGeneration);
     if(!visible || generation!==renderGeneration) return;
-    const entries=[],unrecognised=[],outOfStock=[],hiddenRows=new Map();
+    const entries=[],unrecognised=[],auctions=[],outOfStock=[],hiddenRows=new Map();
     for(const row of visible) {
       if(hiddenUntil(row.url)) {
         if(!hiddenRows.has(row.url)||(hiddenRows.get(row.url).outOfStock&&!row.outOfStock)) hiddenRows.set(row.url,row);
-      } else if (EbayVariants.ambiguousFilamentTypes(row).length) unrecognised.push(row);
+      } else if (row.isAuction) auctions.push(row);
+      else if (EbayVariants.ambiguousFilamentTypes(row).length) unrecognised.push(row);
       else (row.outOfStock ? outOfStock : entries).push(row);
       if(performance.now()-sliceStart>4) {await EbaySearchView.yieldTurn();if(generation!==renderGeneration)return;sliceStart=performance.now();}
     }
@@ -279,12 +281,16 @@
     const unrecognisedSection=root.querySelector('.finder-unrecognised');
     unrecognisedSection.hidden=!unrecognised.length;
     unrecognisedSection.querySelector('summary').textContent=`Not recognised types (${new Set(unrecognised.map(row=>row.url)).size} listings)`;
+    const auctionSection=root.querySelector('.finder-auctions');
+    auctionSection.hidden=!auctions.length;
+    auctionSection.querySelector('summary').textContent=`Auctions (${new Set(auctions.map(row=>row.url)).size} listings)`;
     const hiddenSection=root.querySelector('.finder-hidden'),stockSection=root.querySelector('.finder-out-of-stock');
     hiddenSection.hidden=!hiddenEntries.length;hiddenSection.querySelector('summary').textContent=`Hidden (${hiddenEntries.length} listings)`;
     stockSection.hidden=!outOfStock.length;stockSection.querySelector('summary').textContent=`Out of stock variants (${outOfStock.length})`;
     const context={averages,sortKey};
     virtualView.set(resultsSection.querySelector('.finder-entries'),entries,context,!entries.length&&showResults ? EbayCards.emptyState({scanning:running,outOfStock:outOfStock.length>0}) : null);
     virtualView.set(unrecognisedSection.querySelector('.finder-entries'),unrecognised,context);
+    virtualView.set(auctionSection.querySelector('.finder-entries'),auctions,context);
     virtualView.set(hiddenSection.querySelector('.finder-entries'),hiddenEntries,context);
     virtualView.set(stockSection.querySelector('.finder-entries'),outOfStock,context);
     syncSort(sortKey,ascending);
@@ -622,7 +628,7 @@
     async function request(listing, visible=scanMode==='visible') {
       registerScanCandidate(listing);scanBatch.active.add(listing.url);updateScanProgress();
       try {
-        let response = await EbayRuntime.sendMessage({type:'scan-listing',url:listing.url,title:listing.title,image:listing.image,visible,
+        let response = await EbayRuntime.sendMessage({type:'scan-listing',url:listing.url,title:listing.title,image:listing.image,isAuction:listing.isAuction===true,visible,
           returnToSource:visible && scanMode==='mixed',
           progress:currentScanProgress(listing),forceRefresh:listing.forceRefresh===true});
         if (response?.pending) {
@@ -680,7 +686,7 @@
         EbayDock.save({failures});showFailures();
       } else {
         results=results.filter(row=>row.url!==listing.url);
-        results.push(...response.rows.map(row=>({...row,url:listing.url,title:row.title||listing.title,image:row.image||listing.image})));
+        results.push(...response.rows.map(row=>({...row,isAuction:row.isAuction||listing.isAuction===true,url:listing.url,title:row.title||listing.title,image:row.image||listing.image})));
         EbayDock.save({results,allCacheView:showAllCache,pageListingUrls:[...pageListings]});
       }
       render();

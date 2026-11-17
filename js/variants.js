@@ -587,6 +587,19 @@ globalThis.EbayVariants = (() => {
       priceCollator.compare(String(a.title || ''),String(b.title || '')) ||
       priceCollator.compare(String(a.label || ''),String(b.label || ''));
   }
+  function isAuctionListing(source) {
+    if(typeof source !== 'string') {
+      if(source.querySelector('[data-testid="x-bid-action"], .x-bid-action, [data-testid="x-bid-price"], #bidBtn_btn, #bidBtn')) return true;
+      return Array.from(source.querySelectorAll('.x-buybox button, [data-testid="x-buybox"] button, .x-buybox a'))
+        .some(node=>/^place (?:a )?bid$/i.test(node.textContent.trim()));
+    }
+    // Inspect actual controls and populated price models, never seller prose,
+    // recommendation text or template/translation strings in scripts.
+    const markup=source.replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'');
+    if(/\b(?:data-testid|class|id)\s*=\s*["'][^"']*\b(?:x-bid-action|x-bid-price|bidBtn_btn|bidBtn)\b[^"']*["']/i.test(markup)) return true;
+    const model=extractObject(source,'bidModel');
+    return !!model && (model.price?.value != null || model.currentBid != null || model.bidCount != null);
+  }
   function hasFilamentText(text) {
     return /(?:^|[^\p{L}\p{N}_])filament(?=$|[^\p{L}\p{N}_])/iu.test(String(text || ''));
   }
@@ -939,5 +952,5 @@ globalThis.EbayVariants = (() => {
     const title=/<h[12]\b[^>]*data-testid\s*=\s*(?:"dp-error-banner-container-title-[^"]*"|'dp-error-banner-container-title-[^']*'|dp-error-banner-container-title-[^\s>]+)[^>]*>([\s\S]*?)<\/h[12]\s*>/i.exec(markup);
     return !!title && /^we looked everywhere!?$/i.test(title[1].replace(/<[^>]*>/g,' ').trim()) && /looks like this page is missing\./i.test(markup.slice(title.index,title.index+1500).replace(/<[^>]*>/g,' '));
   }
-  return { getBannerOffer,withBannerOffers,isMissingListing, couponLabel, matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, hasFilamentText, listingFilamentInfo, ambiguousFilamentTypes, formatQueryInput, attachQueryFormatting, normalizeSearchText, queryError, attachQueryValidation, attachClearInput, terms, matches };
+  return { getBannerOffer,withBannerOffers,isMissingListing, couponLabel, matchingAverage, trimPriceNote, withVolumePricing, spoolLabel, totalEstimate, getCoupon, compareSpool, formatCurrency, spoolEstimate, spoolTooltip, displaySpool, displayTotal, priceTooltip, getPostage, withPostage, comparePrice, getRows, getSingleItemRows, isAuctionListing, hasFilamentText, listingFilamentInfo, ambiguousFilamentTypes, formatQueryInput, attachQueryFormatting, normalizeSearchText, queryError, attachQueryValidation, attachClearInput, terms, matches };
 })();

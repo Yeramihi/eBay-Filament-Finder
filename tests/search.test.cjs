@@ -331,11 +331,11 @@ test('single-item multi-material listings move below Results, while real variant
     {url:listing(4).url,title:'PLA PETG',label:'PLA PETG',singleItem:true,outOfStock:true}
   ];
   const h=harness({saved:{discoveryVersion:2,results:rows}});await tick();await tick();
-  const batches=h.rendered.slice(-4);
+  const batches=h.rendered.slice(-5);
   assert.deepEqual(Array.from(batches[0],row=>row.url).sort(),[listing(2).url,listing(3).url]);
   assert.deepEqual(Array.from(batches[1],row=>row.url).sort(),[listing(1).url,listing(4).url]);
   assert.equal(h.get('.finder-unrecognised').hidden,false);
-  assert.equal(batches[3].length,0);
+  assert.equal(batches[4].length,0);
   assert.ok(source.indexOf('class="finder-unrecognised"')>source.indexOf('class="results"'));
   assert.ok(source.indexOf('class="finder-unrecognised"')<source.indexOf('class="finder-hidden"'));
 });
@@ -388,4 +388,16 @@ test('automatic scan is gated by filament detection and reuses fresh cache',asyn
   // Cache reads omit entries outside retention, just as a cache miss does.
   h.cache.delete(listing(1).url);await h.discover(true);
   assert.deepEqual(h.calls,[listing(2).url,listing(1).url]);await h.complete();
+});
+
+test('auction listings are separated from Results in a category collapsed by default',async()=>{
+  const h=harness({saved:{discoveryVersion:2,results:[
+    {url:listing(1).url,title:'PLA auction',label:'White PLA',isAuction:true,singleItem:true,inStock:true},
+    {url:listing(2).url,title:'PLA Buy It Now',label:'White PLA',inStock:true}
+  ]}});await tick();await tick();
+  const batches=h.rendered.slice(-5);
+  assert.deepEqual(Array.from(batches[0],row=>row.url),[listing(2).url]);
+  assert.deepEqual(Array.from(batches[2],row=>row.url),[listing(1).url]);
+  assert.equal(h.get('.finder-auctions').hidden,false);
+  assert.match(source,/<details class="finder-auctions" hidden>/);
 });

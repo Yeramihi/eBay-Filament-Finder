@@ -34,7 +34,7 @@ globalThis.EbayCards = (() => {
     .listing-content{display:block;color:inherit!important;text-decoration:none!important}
     .listing-content:focus-visible{outline:3px solid #2563eb}
     .listing-cache-actions{display:flex;flex-wrap:wrap;align-items:center;gap:5px;clear:both;margin-top:6px}
-    .finder-hidden,.finder-unrecognised{padding:8px 9px}.finder-hidden summary,.finder-unrecognised summary{cursor:pointer;font-weight:600}
+    .finder-hidden,.finder-unrecognised,.finder-auctions{padding:8px 9px}.finder-hidden summary,.finder-unrecognised summary,.finder-auctions summary{cursor:pointer;font-weight:600}
     .hidden-help{font:11px/1.4 system-ui;color:#64748b;margin:6px 0}
     .hidden-until{display:block;font:11px/1.4 system-ui;color:#64748b;white-space:normal}
     .hide-duration{font:11px/1.4 system-ui;max-width:85px;padding:2px;border:1px solid #aab7c7;border-radius:4px;background:#fff;color:#17365d}
@@ -304,7 +304,7 @@ globalThis.EbayCards = (() => {
       const next=displayOrder[(displayOrder.indexOf(value)+1)%displayOrder.length];
       viewButton.setAttribute('aria-label',`View: ${labels[value]}. Switch to ${labels[next]}`);
       viewButton.setAttribute('title',`View: ${labels[value]}. Switch to ${labels[next]}`);
-      for (const list of [entries, unavailableEntries,...root.querySelectorAll('.finder-hidden .finder-entries, .finder-unrecognised .finder-entries')]) {
+      for (const list of [entries, unavailableEntries,...root.querySelectorAll('.finder-hidden .finder-entries, .finder-unrecognised .finder-entries, .finder-auctions .finder-entries')]) {
         list.classList.toggle('lines', value === 'lines');
         list.classList.toggle('photos-only',value==='photos');
       }
@@ -390,6 +390,7 @@ globalThis.EbayCards = (() => {
     function field(label,value,tooltip,estimate=false){if(!value)return;const span=document.createElement('span');span.className='field'+(estimate?' estimate':'');span.dataset.sortField=({'Listing':'title','Variant':'label','Individual purchase':'total','Bulk purchase*':'spool'})[label]||'';if(row.singleItem&&label==='Listing')span.dataset.sortAlias='label';span.textContent=`${label}: ${value}`;fields.push(span.textContent+(tooltip&&tooltip!==span.textContent?`\n${tooltip}`:''));if(tooltip)EbayCards.tooltip(span,tooltip);item.append(span);}
     if(search||row.singleItem)field('Listing',row.title||row.label);
     if(!row.singleItem)field('Variant',row.label);
+    if(row.isAuction)field('Sale type','Auction — current bid; final price may change');
     const ambiguousTypes=EbayVariants.ambiguousFilamentTypes?.(row) || [];
     if(ambiguousTypes.length)field('Material','Not recognised types',`No variant choices are available. The title names ${ambiguousTypes.join(', ')}, so the actual filament type cannot be identified reliably.`);
     field('Individual purchase',EbayVariants.displayTotal(row,format),EbayVariants.priceTooltip(row));

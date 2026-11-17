@@ -73,3 +73,12 @@ test('scanning reuses explicitly included cached listings without rejecting them
   assert.equal((await h.send({type:'scan-listing',url})).rows[0].manuallyIncluded,true);
   assert.equal(h.fetched.length,0);
 });
+
+test('auctions are detected from bid controls and populated models, not descriptive text',()=>{
+  assert.equal(api.isAuctionListing('<button data-testid="x-bid-action">Place bid</button>'),true);
+  assert.equal(api.isAuctionListing('<div class="x-bid-price">£5</div>'),true);
+  assert.equal(api.isAuctionListing('<script>{"bidModel":{"price":{"value":5}}}</script>'),true);
+  assert.equal(api.isAuctionListing('<p>Auction style filament. Place bid today</p>'),false);
+  assert.equal(api.isAuctionListing('<script>"bidModel":null</script><button>Buy it now</button>'),false);
+  assert.equal(api.isAuctionListing({querySelector:()=>({}),querySelectorAll:()=>[]}),true);
+});

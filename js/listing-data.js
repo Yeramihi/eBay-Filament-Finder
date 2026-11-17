@@ -10,5 +10,5 @@ globalThis.EbayListingData = () => {
   const image=document.querySelector('meta[property="og:image"]')?.content||document.querySelector('.ux-image-carousel-item img')?.src;
   const coupon=EbayVariants.getCoupon(document);
   return EbayVariants.withPostage(EbayVariants.withBannerOffers(EbayVariants.withVolumePricing(rows,scripts),scripts),EbayVariants.getPostage(html))
-    .map(row=>({...row,title,coupon,image:row.image||image}));
+    .map(row=>({...row,isAuction:EbayVariants.isAuctionListing(document),title,coupon,image:row.image||image}));
 };

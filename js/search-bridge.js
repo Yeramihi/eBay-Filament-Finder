@@ -48,7 +48,10 @@
         if (!id || id === '123456' || url.origin !== location.origin || found.has(id)) continue;
         const title = (card.querySelector('.s-item__title, .s-card__title, h3')?.textContent || link.textContent).replace(/Opens in a new window or tab/g, '').trim();
         if (!title || /shop on ebay/i.test(title)) continue;
-        found.set(id, { title, image:card.querySelector('img')?.src, url: `${url.origin}/itm/${id}` });
+        const bid=card.querySelector('.s-item__bids, .s-item__bidCount, .s-card__bidCount');
+        const buying=card.querySelector('.s-item__purchase-options, .s-card__purchase-options');
+        const isAuction=!!bid || /\b(?:auction|\d+ bids?)\b/i.test(buying?.textContent || '');
+        found.set(id, { title, isAuction, image:card.querySelector('img')?.src, url: `${url.origin}/itm/${id}` });
       }
     }
     return [...found.values()];
