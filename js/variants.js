@@ -365,7 +365,19 @@ globalThis.EbayVariants = (() => {
     for(const script of scripts) {const found=extractObject(script,'SME_BANNER');if(found?._type==='SMEBannerModule'&&typeof found.htmlMessage==='string') {model=found;break;}}
     if(!model) return null;
     const text=promotionText(model.htmlMessage),match=/\bbuy\s+(\d+)\s*[,;:\-–—]?\s*get\s+(\d+)\s+free\b/i.exec(text);
-    if(!match) return null;
+    if(!match) {
+      // Percentage quantity tiers are another SME banner format, e.g.
+      // 10% off 2 · 15% off 3 · 20% off 4 or more items.
+      const tierPattern=/(\d+(?:\.\d+)?)\s*%\s+off\s+(\d+)(?:\s+or\s+more)?(?:\s+items?)?/gi;
+      const tiers=[...text.matchAll(tierPattern)].map(tier=>({percent:Number(tier[1]),quantity:Number(tier[2])}));
+      const remainder=text.replace(tierPattern,'').replace(/[\s·•,;|]+/g,'');
+      if(!tiers.length || remainder || tiers.some(tier=>!Number.isSafeInteger(tier.quantity)||tier.quantity<2||!(tier.percent>0&&tier.percent<100))) return null;
+      // Conflicting rates at one quantity are ambiguous rather than stackable.
+      if(tiers.some(tier=>tiers.some(other=>other.quantity===tier.quantity&&other.percent!==tier.percent))) return null;
+      let termsUrl;
+      try {const url=new URL(model.offerUrl?.action?.URL);if(/^https:\/\/(?:www\.)?ebay\.(?:co\.uk|com)$/.test(url.origin)) termsUrl=url.href;} catch {}
+      return {tiers,source:'banner',...(termsUrl?{termsUrl}:{})};
+    }
     const pay=Number(match[1]),free=Number(match[2]),spools=pay+free;
     if(![pay,free,spools].every(Number.isSafeInteger)||pay<1||free<1) return null;
     const basket=/\badd\s+(\d+)\s+to\s+(?:the\s+)?basket\b/i.exec(text);
@@ -445,6 +457,19 @@ globalThis.EbayVariants = (() => {
       offer={...banner,description:`Buy ${banner.pay} Get ${banner.free} Free`,
         formula:`(item price × ${banner.spools} − free-item saving${banner.maxSaving!==undefined ? ` capped at ${formatCurrency(banner.maxSaving,banner.currency)}` : ''} + postage) ÷ ${banner.spools}`};
     }
+    if(banner?.tiers?.length) {
+      const candidates=banner.tiers.filter(tier=>Number.isSafeInteger(tier.quantity)&&tier.quantity>1&&tier.percent>0&&tier.percent<100)
+        .map(tier=>({source:'banner',factor:1-tier.percent/100,spools:tier.quantity,percent:tier.percent,
+          ...(banner.termsUrl?{termsUrl:banner.termsUrl}:{}),
+          description:`Buy ${tier.quantity} Save ${tier.percent}%`,
+          formula:`(item price × ${tier.quantity} × (1 − ${tier.percent}%) + postage) ÷ ${tier.quantity}`}));
+      const unitCost=candidate=>{
+        const subtotal=offerSubtotal(row,candidate);
+        return (subtotal-couponSaving(applicableCoupon(row),subtotal)+(Number.isFinite(row.postage)?row.postage:0))/candidate.spools;
+      };
+      const best=candidates.sort((a,b)=>unitCost(a)-unitCost(b)||a.spools-b.spools)[0];
+      if(best && (!offer || unitCost(best)<=unitCost(offer))) offer=best;
+    }
     const volume = row.volumePricing;
     if (volume && volume.currency === row.currency && Number.isSafeInteger(volume.quantity) && volume.quantity > 1 &&
         Number.isFinite(volume.amount) && volume.amount >= 0 && volume.amount < row.amount &&
@@ -473,7 +498,7 @@ globalThis.EbayVariants = (() => {
     const calculation = estimate.offer
       ? `${estimate.offer.description}: ${estimate.offer.formula}. Requires purchase of ${estimate.offer.spools} ${estimate.offer.identical ? 'identical items (same variant; variants cannot be mixed)' : 'items from this listing'}. Assumes all items have this price.`
       : 'No unambiguous supported offer recognised; showing the regular total, including recognised postage.';
-    const offerNote=estimate.offer?.source==='banner' ? `\nOffer shown in eBay’s listing banner.${estimate.offer.code ? ` Enter code ${estimate.offer.code} at checkout.` : ''}${estimate.offer.maxSaving!==undefined ? ` Maximum saving: ${formatCurrency(estimate.offer.maxSaving,estimate.offer.currency)} per order.` : ''} Assumes equally priced eligible items; check the offer terms for mixing variants, which items are free and eligibility.${estimate.offer.termsUrl ? ` Terms: ${estimate.offer.termsUrl}` : ''}${row.coupon&&estimate.offer.code ? ' A separate coupon is not stacked with this code-required offer.' : ''}` : '';
+    const offerNote=estimate.offer?.source==='banner' ? `\nOffer shown in eBay’s listing banner.${estimate.offer.code ? ` Enter code ${estimate.offer.code} at checkout.` : ''}${estimate.offer.maxSaving!==undefined ? ` Maximum saving: ${formatCurrency(estimate.offer.maxSaving,estimate.offer.currency)} per order.` : ''} Assumes equally priced eligible items; check the offer terms for mixing variants, quantity requirements and eligibility.${estimate.offer.termsUrl ? ` Terms: ${estimate.offer.termsUrl}` : ''}${row.coupon&&estimate.offer.code ? ' A separate coupon is not stacked with this code-required offer.' : ''}` : '';
     const couponNote = estimate.coupon ? `\nIncludes ${estimate.coupon.source==='subtitle' ? 'seller-advertised' : 'eBay'} coupon: ${couponLabel(estimate.coupon)} off the item subtotal after multi-buy discounts, before postage.${Number.isFinite(estimate.coupon.maxSaving) ? ` Maximum coupon saving: ${formatCurrency(estimate.coupon.maxSaving,estimate.coupon.capCurrency)} once per order, not per item.` : ''}${Number.isFinite(estimate.coupon.amount) ? ' The fixed voucher is deducted once from the order total, not from every item.' : ''}${estimate.coupon.code ? ` Code: ${estimate.coupon.code}.` : ''} Check the coupon details on the listing page for maximum savings, minimum spend, expiry, eligibility and whether offers combine. Enter the code at checkout and verify manually.` : '';
     return `Experimental estimate — check the offer, required quantity, eligibility, spool size and delivery manually before buying.\n${estimate.coupon && !estimate.offer ? 'One item at the regular price before coupon.' : calculation}${offerNote}${couponNote}\nRecognised postage is added once after discounts, then divided across the offer quantity. Delivery charges for a multi-item order may differ.`;
   }

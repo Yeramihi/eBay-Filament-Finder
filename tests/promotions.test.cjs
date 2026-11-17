@@ -109,3 +109,23 @@ test('mixed average includes fixed coupons and per-variant offers even when quan
   const rows=[row(10,{title:'Buy 5 Pay 3'}),row(10,{title:'Buy 4 Pay 3'})];
   assert.equal(api.matchingAverage(rows).amount,6.75);assert.equal(api.matchingAverage(rows).offer,null);
 });
+
+test('percentage quantity tiers from the YOUSU banner reduce bulk price at four items',()=>{
+  const htmlMessage='<SPAN STYLE="COLOR:#DD1E31">10%</SPAN> off 2 · <SPAN STYLE="COLOR:#DD1E31">15%</SPAN> off 3 · <SPAN STYLE="COLOR:#DD1E31">20%</SPAN> off 4 or more items';
+  const rows=api.withBannerOffers([row(14.85,{singleItem:true,title:'YOUSU Dual Colour Matte PLA 3D Printer Filament'})],banner(htmlMessage));
+  const estimate=api.spoolEstimate(rows[0]);
+  assert.equal(estimate.recognised,true);
+  assert.equal(estimate.amount,11.88);
+  assert.equal(estimate.offer.spools,4);
+  assert.equal(estimate.offer.percent,20);
+  assert.match(api.spoolLabel(rows[0]),/Requires 4/);
+  assert.match(api.spoolTooltip(rows[0],estimate),/20%/);
+  assert.equal(api.displayTotal(rows[0],value=>String(value)),api.displayTotal(row(14.85),value=>String(value)));
+});
+test('percentage banners select one tier, include postage once and reject ambiguous terms',()=>{
+  const script=banner('10% off 2 · 15% off 3 · 20% off 4 or more items');
+  assert.equal(api.spoolEstimate(api.withBannerOffers([row(10,{postage:4,total:14})],script)[0]).amount,9);
+  for(const text of ['10% off 2 · 15% off 2','100% off 4','20% off 0','20% off 4 with CODE','20% off 4 (Max £5 off)']) {
+    assert.equal(api.getBannerOffer(banner(text)),null,text);
+  }
+});
